@@ -1,0 +1,833 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "690b50688ad0105b5b8e272f54c8596c",
+    "entities": [
+      {
+        "tableName": "tabs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `url` TEXT NOT NULL, `normalizedUrl` TEXT NOT NULL, `host` TEXT NOT NULL, `hostPath` TEXT NOT NULL, `title` TEXT NOT NULL, `browser` TEXT NOT NULL, `sourceGroup` TEXT NOT NULL, `assignedGroup` TEXT NOT NULL, `createdAtEpochMs` INTEGER NOT NULL, `importedAtEpochMs` INTEGER NOT NULL, `lastSeenAtEpochMs` INTEGER NOT NULL, `pinned` INTEGER NOT NULL, `notes` TEXT NOT NULL, `tagsJson` TEXT NOT NULL, `status` TEXT NOT NULL, `snoozedUntilEpochMs` INTEGER, `sourceDevice` TEXT NOT NULL, `sourceTabId` TEXT NOT NULL, `lastTransferredAtEpochMs` INTEGER, `transferCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedUrl",
+            "columnName": "normalizedUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "host",
+            "columnName": "host",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hostPath",
+            "columnName": "hostPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "browser",
+            "columnName": "browser",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceGroup",
+            "columnName": "sourceGroup",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assignedGroup",
+            "columnName": "assignedGroup",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "createdAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importedAtEpochMs",
+            "columnName": "importedAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAtEpochMs",
+            "columnName": "lastSeenAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinned",
+            "columnName": "pinned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tagsJson",
+            "columnName": "tagsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snoozedUntilEpochMs",
+            "columnName": "snoozedUntilEpochMs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourceDevice",
+            "columnName": "sourceDevice",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceTabId",
+            "columnName": "sourceTabId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastTransferredAtEpochMs",
+            "columnName": "lastTransferredAtEpochMs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "transferCount",
+            "columnName": "transferCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_tabs_normalizedUrl",
+            "unique": false,
+            "columnNames": [
+              "normalizedUrl"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_normalizedUrl` ON `${TABLE_NAME}` (`normalizedUrl`)"
+          },
+          {
+            "name": "index_tabs_hostPath",
+            "unique": false,
+            "columnNames": [
+              "hostPath"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_hostPath` ON `${TABLE_NAME}` (`hostPath`)"
+          },
+          {
+            "name": "index_tabs_host",
+            "unique": false,
+            "columnNames": [
+              "host"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_host` ON `${TABLE_NAME}` (`host`)"
+          },
+          {
+            "name": "index_tabs_assignedGroup",
+            "unique": false,
+            "columnNames": [
+              "assignedGroup"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_assignedGroup` ON `${TABLE_NAME}` (`assignedGroup`)"
+          },
+          {
+            "name": "index_tabs_browser",
+            "unique": false,
+            "columnNames": [
+              "browser"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_browser` ON `${TABLE_NAME}` (`browser`)"
+          },
+          {
+            "name": "index_tabs_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_tabs_importedAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "importedAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_importedAtEpochMs` ON `${TABLE_NAME}` (`importedAtEpochMs`)"
+          },
+          {
+            "name": "index_tabs_lastSeenAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "lastSeenAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_lastSeenAtEpochMs` ON `${TABLE_NAME}` (`lastSeenAtEpochMs`)"
+          },
+          {
+            "name": "index_tabs_pinned",
+            "unique": false,
+            "columnNames": [
+              "pinned"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_pinned` ON `${TABLE_NAME}` (`pinned`)"
+          },
+          {
+            "name": "index_tabs_sourceDevice",
+            "unique": false,
+            "columnNames": [
+              "sourceDevice"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_sourceDevice` ON `${TABLE_NAME}` (`sourceDevice`)"
+          },
+          {
+            "name": "index_tabs_sourceGroup",
+            "unique": false,
+            "columnNames": [
+              "sourceGroup"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_sourceGroup` ON `${TABLE_NAME}` (`sourceGroup`)"
+          },
+          {
+            "name": "index_tabs_status_importedAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "importedAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_status_importedAtEpochMs` ON `${TABLE_NAME}` (`status`, `importedAtEpochMs`)"
+          },
+          {
+            "name": "index_tabs_status_assignedGroup",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "assignedGroup"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_status_assignedGroup` ON `${TABLE_NAME}` (`status`, `assignedGroup`)"
+          },
+          {
+            "name": "index_tabs_status_browser",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "browser"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_status_browser` ON `${TABLE_NAME}` (`status`, `browser`)"
+          },
+          {
+            "name": "index_tabs_status_normalizedUrl",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "normalizedUrl"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_status_normalizedUrl` ON `${TABLE_NAME}` (`status`, `normalizedUrl`)"
+          },
+          {
+            "name": "index_tabs_sourceDevice_browser_sourceTabId",
+            "unique": false,
+            "columnNames": [
+              "sourceDevice",
+              "browser",
+              "sourceTabId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_tabs_sourceDevice_browser_sourceTabId` ON `${TABLE_NAME}` (`sourceDevice`, `browser`, `sourceTabId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "regex_rules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `pattern` TEXT NOT NULL, `target` TEXT NOT NULL, `destinationGroup` TEXT NOT NULL, `priority` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `ignoreCase` INTEGER NOT NULL, `addTagsJson` TEXT NOT NULL, `stopAfterMatch` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pattern",
+            "columnName": "pattern",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "target",
+            "columnName": "target",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destinationGroup",
+            "columnName": "destinationGroup",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ignoreCase",
+            "columnName": "ignoreCase",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addTagsJson",
+            "columnName": "addTagsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopAfterMatch",
+            "columnName": "stopAfterMatch",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_regex_rules_priority",
+            "unique": false,
+            "columnNames": [
+              "priority"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_regex_rules_priority` ON `${TABLE_NAME}` (`priority`)"
+          },
+          {
+            "name": "index_regex_rules_enabled",
+            "unique": false,
+            "columnNames": [
+              "enabled"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_regex_rules_enabled` ON `${TABLE_NAME}` (`enabled`)"
+          }
+        ]
+      },
+      {
+        "tableName": "groups",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `colorKey` TEXT NOT NULL, `iconKey` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `isSystem` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorKey",
+            "columnName": "colorKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iconKey",
+            "columnName": "iconKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSystem",
+            "columnName": "isSystem",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_groups_name",
+            "unique": true,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_groups_name` ON `${TABLE_NAME}` (`name`)"
+          },
+          {
+            "name": "index_groups_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_groups_sortOrder` ON `${TABLE_NAME}` (`sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "transfer_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `targetBrowser` TEXT NOT NULL, `attempted` INTEGER NOT NULL, `opened` INTEGER NOT NULL, `failed` INTEGER NOT NULL, `cancelled` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `createdAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetBrowser",
+            "columnName": "targetBrowser",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempted",
+            "columnName": "attempted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "opened",
+            "columnName": "opened",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failed",
+            "columnName": "failed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cancelled",
+            "columnName": "cancelled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "createdAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_transfer_history_createdAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "createdAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_history_createdAtEpochMs` ON `${TABLE_NAME}` (`createdAtEpochMs`)"
+          }
+        ]
+      },
+      {
+        "tableName": "import_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `source` TEXT NOT NULL, `sourceLabel` TEXT NOT NULL, `received` INTEGER NOT NULL, `accepted` INTEGER NOT NULL, `rejected` INTEGER NOT NULL, `deviceName` TEXT NOT NULL, `createdAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceLabel",
+            "columnName": "sourceLabel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "received",
+            "columnName": "received",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accepted",
+            "columnName": "accepted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rejected",
+            "columnName": "rejected",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceName",
+            "columnName": "deviceName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "createdAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_import_history_createdAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "createdAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_import_history_createdAtEpochMs` ON `${TABLE_NAME}` (`createdAtEpochMs`)"
+          }
+        ]
+      },
+      {
+        "tableName": "smart_views",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `queryJson` TEXT NOT NULL, `iconKey` TEXT NOT NULL, `colorKey` TEXT NOT NULL, `pinned` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queryJson",
+            "columnName": "queryJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iconKey",
+            "columnName": "iconKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorKey",
+            "columnName": "colorKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pinned",
+            "columnName": "pinned",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_smart_views_pinned",
+            "unique": false,
+            "columnNames": [
+              "pinned"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_smart_views_pinned` ON `${TABLE_NAME}` (`pinned`)"
+          },
+          {
+            "name": "index_smart_views_sortOrder",
+            "unique": false,
+            "columnNames": [
+              "sortOrder"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_smart_views_sortOrder` ON `${TABLE_NAME}` (`sortOrder`)"
+          }
+        ]
+      },
+      {
+        "tableName": "decks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `iconKey` TEXT NOT NULL, `colorKey` TEXT NOT NULL, `createdAtEpochMs` INTEGER NOT NULL, `updatedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iconKey",
+            "columnName": "iconKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorKey",
+            "columnName": "colorKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMs",
+            "columnName": "createdAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMs",
+            "columnName": "updatedAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_decks_updatedAtEpochMs",
+            "unique": false,
+            "columnNames": [
+              "updatedAtEpochMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_decks_updatedAtEpochMs` ON `${TABLE_NAME}` (`updatedAtEpochMs`)"
+          }
+        ]
+      },
+      {
+        "tableName": "deck_tabs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`deckId` TEXT NOT NULL, `tabId` TEXT NOT NULL, `position` INTEGER NOT NULL, `addedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`deckId`, `tabId`), FOREIGN KEY(`deckId`) REFERENCES `decks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`tabId`) REFERENCES `tabs`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "deckId",
+            "columnName": "deckId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tabId",
+            "columnName": "tabId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAtEpochMs",
+            "columnName": "addedAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "deckId",
+            "tabId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_deck_tabs_deckId",
+            "unique": false,
+            "columnNames": [
+              "deckId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_deck_tabs_deckId` ON `${TABLE_NAME}` (`deckId`)"
+          },
+          {
+            "name": "index_deck_tabs_tabId",
+            "unique": false,
+            "columnNames": [
+              "tabId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_deck_tabs_tabId` ON `${TABLE_NAME}` (`tabId`)"
+          },
+          {
+            "name": "index_deck_tabs_deckId_position",
+            "unique": false,
+            "columnNames": [
+              "deckId",
+              "position"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_deck_tabs_deckId_position` ON `${TABLE_NAME}` (`deckId`, `position`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "decks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "deckId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "tabs",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tabId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '690b50688ad0105b5b8e272f54c8596c')"
+    ]
+  }
+}

@@ -1,12 +1,12 @@
 TabDeck static validation
 =========================
-PASS: Parsed 12 XML files
+PASS: Parsed 13 XML files
 PASS: Parsed 2 JSON files
 PASS: Parsed 2 HTML files
 PASS: Checked 2 JavaScript files with node --check
 PASS: Checked 2 shell scripts with sh -n
 PASS: Parsed 1 embedded XAML document(s)
-PASS: Validated UTF-8 and control-byte integrity for 82 text files
+PASS: Validated UTF-8 and control-byte integrity for 83 text files
 PASS: Checked delimiter integrity for 35 Kotlin/Gradle files
 PASS: Validated Compose icon imports in 4 Kotlin files
 PASS: Parsed 2 PowerShell files

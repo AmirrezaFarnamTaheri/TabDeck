@@ -265,10 +265,11 @@ class TabDeckRepository(context: Context) {
     suspend fun tabsByIds(ids: Collection<String>): List<TabItem> {
         initialize()
         if (ids.isEmpty()) return emptyList()
-        return ids.asSequence().distinct().chunked(SQLITE_IN_CHUNK)
-            .flatMap { tabs.findByIds(it).asSequence() }
-            .map { it.toModel() }
-            .toList()
+        val result = mutableListOf<TabItem>()
+        for (chunk in ids.asSequence().distinct().chunked(SQLITE_IN_CHUNK)) {
+            result += tabs.findByIds(chunk).map { it.toModel() }
+        }
+        return result
     }
 
     suspend fun tabsForDeck(deckId: String): List<TabItem> {
@@ -325,7 +326,7 @@ class TabDeckRepository(context: Context) {
                     transferCount = existing.transferCount,
                 )
             }
-            if (shouldCategorize && existing == null) RegexCategorizer.categorize(base, compiledRules) else base
+            if (shouldCategorize && existing == null) RegexCategorizer.categorizeCompiled(base, compiledRules) else base
         }
 
         database.withTransaction {

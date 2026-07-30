@@ -36,9 +36,9 @@ object RegexCategorizer {
         .mapNotNull { rule -> runCatching { CompiledRule(rule, compile(rule)) }.getOrNull() }
         .toList()
 
-    fun categorize(tab: TabItem, rules: List<RegexRule>): TabItem = categorize(tab, compileEnabled(rules))
+    fun categorize(tab: TabItem, rules: List<RegexRule>): TabItem = categorizeCompiled(tab, compileEnabled(rules))
 
-    fun categorize(tab: TabItem, rules: List<CompiledRule>): TabItem {
+    internal fun categorizeCompiled(tab: TabItem, rules: List<CompiledRule>): TabItem {
         var result = tab
         for (compiled in rules) {
             if (!matches(result, compiled)) continue
@@ -53,7 +53,7 @@ object RegexCategorizer {
 
     fun categorizeAll(tabs: List<TabItem>, rules: List<RegexRule>): List<TabItem> {
         val compiled = compileEnabled(rules)
-        return tabs.map { categorize(it, compiled) }
+        return tabs.map { categorizeCompiled(it, compiled) }
     }
 
     fun matches(tab: TabItem, rule: RegexRule): Boolean =
@@ -71,7 +71,7 @@ object RegexCategorizer {
     }
 
     private fun compile(rule: RegexRule): Pattern {
-        val flags = if (rule.ignoreCase) Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE else 0
+        val flags = if (rule.ignoreCase) Pattern.CASE_INSENSITIVE else 0
         return Pattern.compile(rule.pattern, flags)
     }
 }

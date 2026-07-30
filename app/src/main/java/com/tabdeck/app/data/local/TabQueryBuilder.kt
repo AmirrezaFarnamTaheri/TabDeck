@@ -25,23 +25,23 @@ object TabQueryBuilder {
 
         if (query.statuses.isNotEmpty()) {
             clauses += "status IN (${placeholders(query.statuses.size)})"
-            args += query.statuses.map { it.name }
+            args.addAll(query.statuses.map { it.name })
         }
         if (query.browsers.isNotEmpty()) {
             clauses += "browser IN (${placeholders(query.browsers.size)})"
-            args += query.browsers.map { it.name }
+            args.addAll(query.browsers.map { it.name })
         }
         if (query.groups.isNotEmpty()) {
             clauses += "assignedGroup IN (${placeholders(query.groups.size)})"
-            args += query.groups.sorted()
+            args.addAll(query.groups.sorted())
         }
         if (query.sourceDevices.isNotEmpty()) {
             clauses += "sourceDevice IN (${placeholders(query.sourceDevices.size)})"
-            args += query.sourceDevices.sorted()
+            args.addAll(query.sourceDevices.sorted())
         }
         if (query.sourceGroups.isNotEmpty()) {
             clauses += "sourceGroup IN (${placeholders(query.sourceGroups.size)})"
-            args += query.sourceGroups.sorted()
+            args.addAll(query.sourceGroups.sorted())
         }
         if (query.pinnedOnly) clauses += "pinned = 1"
         if (query.hasNotesOnly) clauses += "TRIM(notes) != ''"

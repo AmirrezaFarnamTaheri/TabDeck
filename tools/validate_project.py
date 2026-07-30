@@ -272,11 +272,12 @@ def validate_build_coordinates() -> None:
     app_build = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
     wrapper = (ROOT / "gradle/wrapper/gradle-wrapper.properties").read_text(encoding="utf-8")
     required = {
-        "AGP 9.0.1": 'com.android.application") version "9.0.1"',
-        "Kotlin 2.2.10": 'org.jetbrains.kotlin.plugin.compose") version "2.2.10"',
-        "KSP 2.3.9": 'com.google.devtools.ksp") version "2.3.9"',
-        "Compose BOM 2026.06.00": 'compose-bom:2026.06.00',
+        "AGP 9.3.1": 'com.android.application") version "9.3.1"',
+        "Kotlin 2.4.10": 'org.jetbrains.kotlin.plugin.compose") version "2.4.10"',
+        "KSP 2.3.10": 'com.google.devtools.ksp") version "2.3.10"',
+        "Compose BOM 2026.06.01": 'compose-bom:2026.06.01',
         "Room 2.8.4": 'val roomVersion = "2.8.4"',
+        "Room Paging 2.8.4": 'androidx.room:room-paging:$roomVersion',
         "WorkManager 2.11.2": 'work-runtime-ktx:2.11.2',
         "RE2/J 1.8": 're2j:1.8',
         "compileSdk 36": 'compileSdk = 36',

@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -125,7 +124,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -836,7 +835,7 @@ fun TransferScreen(
                 ElevatedCard(shape = RoundedCornerShape(24.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Opening in ${progress.target.displayName}", style = MaterialTheme.typography.titleLarge)
-                        ProgressStrip(if (progress.total == 0) 0f else progress.completed.toFloat() / progress.total, "${progress.completed} of ${progress.total}", "${progress.failed} failed")
+                        ProgressStrip(if (progress.total == 0) 0f else progress.processed.toFloat() / progress.total, "${progress.processed} of ${progress.total}", "${progress.failed} failed")
                         OutlinedButton(onClick = viewModel::cancelTransfer, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Pause, null); Text("Cancel safely", Modifier.padding(start = 7.dp)) }
                     }
                 }
