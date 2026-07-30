@@ -1,0 +1,70 @@
+name: One-shot repository repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-shot-repair.yml
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply exact PowerShell repair and cleanup probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("desktop-link/TabDeckLink.ps1")
+          text = path.read_text(encoding="utf-8")
+          old = 'Set-Status "Could not query $socket on port $port: $($_.Exception.Message)"'
+          new = 'Set-Status "Could not query $socket on port ${port}: $($_.Exception.Message)"'
+          if old not in text:
+              if new not in text:
+                  raise SystemExit("Expected PowerShell interpolation line was not found")
+          else:
+              text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
+          PY
+          rm -f .github/.connector-probe .github/.connector-probe-2
+          rm -f .github/workflows/one-shot-repair.yml
+
+      - name: Parse PowerShell and validate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          pwsh -NoProfile -Command '$errors = $null; [void][System.Management.Automation.Language.Parser]::ParseFile("desktop-link/TabDeckLink.ps1", [ref]$null, [ref]$errors); if ($errors.Count -gt 0) { $errors | ForEach-Object { $_.Message }; exit 1 }'
+          python3 tools/validate_project.py --report build-validation-report.txt
+
+      - name: Commit repaired repository state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No repair changes were needed."
+          else
+            git commit -m "Fix Desktop Link parsing and clean connector probes"
+            git push origin HEAD:main
+          fi
+
+      - name: Dispatch clean CI run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main
