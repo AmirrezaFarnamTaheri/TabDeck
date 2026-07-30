@@ -178,7 +178,7 @@ function Refresh-Tabs {
                 })
             }
         } catch {
-            Set-Status "Could not query $socket on port $port: $($_.Exception.Message)"
+            Set-Status "Could not query $socket on port ${port}: $($_.Exception.Message)"
         }
     }
     if ($DestinationBox.Items.Count -gt 0) { $DestinationBox.SelectedIndex = 0 }
