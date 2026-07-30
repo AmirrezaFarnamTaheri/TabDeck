@@ -40,7 +40,7 @@ jobs:
             SDKMANAGER="$(command -v sdkmanager)"
           fi
           yes | "${SDKMANAGER}" --licenses >/dev/null || true
-          "${SDKMANAGER}" platform-tools "platforms;android-37" "build-tools;36.0.0"
+          "${SDKMANAGER}" --channel=3 platform-tools "platforms;android-37" "build-tools;36.0.0"
 
       - name: Apply coherent Android toolchain update
         shell: bash
@@ -76,6 +76,15 @@ jobs:
 
           for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
               replace(workflow, 'ANDROID_API: "36"', 'ANDROID_API: "37"')
+              p = Path(workflow)
+              workflow_text = p.read_text(encoding="utf-8")
+              old = '          "${SDKMANAGER}" \\\n'
+              new = '          "${SDKMANAGER}" --channel=3 \\\n'
+              if new not in workflow_text:
+                  if old not in workflow_text:
+                      raise SystemExit(f"SDK manager command anchor not found in {workflow}")
+                  workflow_text = workflow_text.replace(old, new, 1)
+                  p.write_text(workflow_text, encoding="utf-8")
 
           validator = Path("tools/validate_project.py")
           text = validator.read_text(encoding="utf-8")
