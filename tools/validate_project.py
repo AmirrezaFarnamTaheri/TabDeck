@@ -259,6 +259,14 @@ def validate_extension_contracts() -> None:
     ok("Validated extension manifest file references")
 
 
+def validate_gradle_wrapper_files() -> None:
+    wrapper_jar = ROOT / "gradle/wrapper/gradle-wrapper.jar"
+    if not wrapper_jar.is_file() or wrapper_jar.stat().st_size < 10_000:
+        fail("Gradle wrapper JAR is missing or implausibly small")
+    else:
+        ok(f"Validated committed Gradle wrapper JAR ({wrapper_jar.stat().st_size} bytes)")
+
+
 def validate_build_coordinates() -> None:
     root_build = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
     app_build = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
@@ -433,6 +441,7 @@ def main() -> int:
     validate_manifest_contracts()
     validate_product_version()
     validate_extension_contracts()
+    validate_gradle_wrapper_files()
     validate_build_coordinates()
     validate_release_contracts()
     validate_workflow_contracts()

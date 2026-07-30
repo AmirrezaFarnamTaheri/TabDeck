@@ -13,9 +13,10 @@ PASS: Parsed 2 PowerShell files
 PASS: Validated Android manifest privacy and browser-discovery contracts
 PASS: Validated public product version v1.0.0 / Android versionCode 1
 PASS: Validated extension manifest file references
+PASS: Validated committed Gradle wrapper JAR (48462 bytes)
 PASS: Validated pinned build coordinates
 PASS: Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, and widget contracts
 PASS: Validated CI and signed-release workflow contracts
 PASS: Scanned source and documentation for obvious embedded secrets
 
-Result: PASS (17 checks, 0 warnings, 0 errors)
+Result: PASS (18 checks, 0 warnings, 0 errors)
