@@ -110,10 +110,22 @@ jobs:
           query_path.write_text(query_text, encoding="utf-8")
 
           # RE2/J has CASE_INSENSITIVE but not java.util.regex.Pattern.UNICODE_CASE.
+          regex_path = "app/src/main/java/com/tabdeck/app/engine/RegexCategorizer.kt"
+          replace(regex_path, "Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE", "Pattern.CASE_INSENSITIVE")
           replace(
-              "app/src/main/java/com/tabdeck/app/engine/RegexCategorizer.kt",
-              "Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE",
-              "Pattern.CASE_INSENSITIVE",
+              regex_path,
+              "fun categorize(tab: TabItem, rules: List<RegexRule>): TabItem = categorize(tab, compileEnabled(rules))",
+              "fun categorize(tab: TabItem, rules: List<RegexRule>): TabItem = categorizeCompiled(tab, compileEnabled(rules))",
+          )
+          replace(
+              regex_path,
+              "fun categorize(tab: TabItem, rules: List<CompiledRule>): TabItem {",
+              "private fun categorizeCompiled(tab: TabItem, rules: List<CompiledRule>): TabItem {",
+          )
+          replace(
+              regex_path,
+              "return tabs.map { categorize(it, compiled) }",
+              "return tabs.map { categorizeCompiled(it, compiled) }",
           )
 
           # Weight is a RowScope/ColumnScope member extension; explicit imports resolve to internal metadata.
