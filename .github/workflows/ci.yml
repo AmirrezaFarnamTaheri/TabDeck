@@ -16,7 +16,6 @@ concurrency:
 
 env:
   JAVA_VERSION: "17"
-  GRADLE_VERSION: "9.1.0"
   ANDROID_API: "36"
   ANDROID_BUILD_TOOLS: "36.0.0"
   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
@@ -40,7 +39,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Install Android SDK packages
@@ -57,13 +55,14 @@ jobs:
             "platforms;android-${ANDROID_API}" \
             "build-tools;${ANDROID_BUILD_TOOLS}"
 
-      - name: Generate and verify Gradle wrapper
+      - name: Verify committed Gradle wrapper
         shell: bash
         run: |
           set -euo pipefail
-          gradle wrapper --gradle-version "${GRADLE_VERSION}" --distribution-type bin
+          test -s gradle/wrapper/gradle-wrapper.jar
+          test -s gradle/wrapper/gradle-wrapper.properties
+          grep -q '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
-          echo "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
           ./gradlew --version
 
       - name: Check synchronized versions
