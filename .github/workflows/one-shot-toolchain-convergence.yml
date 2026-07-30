@@ -84,12 +84,6 @@ jobs:
               if room_anchor not in app_text:
                   raise SystemExit("Room dependency insertion anchor not found")
               app_text = app_text.replace(room_anchor, room_anchor + room_paging, 1)
-          glance_anchor = '    implementation("androidx.glance:glance-material3:1.1.1")\n'
-          glance_material = '    implementation("androidx.glance:glance-material:1.1.1")\n'
-          if glance_material not in app_text:
-              if glance_anchor not in app_text:
-                  raise SystemExit("Glance dependency insertion anchor not found")
-              app_text = app_text.replace(glance_anchor, glance_anchor + glance_material, 1)
           app.write_text(app_text, encoding="utf-8")
 
           # Suspend-safe, deterministic bulk lookup.
@@ -131,26 +125,35 @@ jobs:
           ):
               remove(source, "import androidx.compose.foundation.layout.weight\n")
 
-          # Correct saveable package, transfer progress property, and trailing-lambda API shape.
+          # Correct saveable package and transfer progress property.
           replace(
               "app/src/main/java/com/tabdeck/app/ui/Screens.kt",
               "import androidx.compose.runtime.rememberSaveable",
               "import androidx.compose.runtime.saveable.rememberSaveable",
           )
           replace("app/src/main/java/com/tabdeck/app/ui/Screens.kt", "progress.completed", "progress.processed")
-          replace(
-              "app/src/main/java/com/tabdeck/app/ui/Dialogs.kt",
-              "fun SwitchLine(label: String, checked: Boolean, onChecked: (Boolean) -> Unit, supporting: String? = null)",
-              "fun SwitchLine(label: String, checked: Boolean, supporting: String? = null, onChecked: (Boolean) -> Unit)",
-          )
 
-          # GlanceTheme lives in glance-material; defaultWeight is a RowScope member extension.
-          replace(
-              "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt",
-              "import androidx.glance.material3.GlanceTheme",
-              "import androidx.glance.material.GlanceTheme",
-          )
-          remove("app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt", "import androidx.glance.layout.defaultWeight\n")
+          # Preserve both trailing-lambda and positional callback SwitchLine call styles.
+          dialogs_path = Path("app/src/main/java/com/tabdeck/app/ui/Dialogs.kt")
+          dialogs_text = dialogs_path.read_text(encoding="utf-8")
+          old_signature = "fun SwitchLine(label: String, checked: Boolean, onChecked: (Boolean) -> Unit, supporting: String? = null)"
+          primary_signature = "fun SwitchLine(label: String, checked: Boolean, supporting: String? = null, onChecked: (Boolean) -> Unit)"
+          if old_signature in dialogs_text:
+              dialogs_text = dialogs_text.replace(old_signature, primary_signature, 1)
+          elif primary_signature not in dialogs_text:
+              raise SystemExit("SwitchLine primary signature was not found")
+          compatibility_overload = '''@Composable\nfun SwitchLine(\n    label: String,\n    checked: Boolean,\n    onChecked: (Boolean) -> Unit,\n    supporting: String? = null,\n) {\n    SwitchLine(label, checked, supporting, onChecked)\n}\n\n'''
+          primary_marker = "@Composable\n" + primary_signature
+          if compatibility_overload not in dialogs_text:
+              if primary_marker not in dialogs_text:
+                  raise SystemExit("SwitchLine overload insertion marker was not found")
+              dialogs_text = dialogs_text.replace(primary_marker, compatibility_overload + primary_marker, 1)
+          dialogs_path.write_text(dialogs_text, encoding="utf-8")
+
+          # GlanceTheme is part of the base androidx.glance package; defaultWeight is a RowScope member extension.
+          widget_path = "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt"
+          replace(widget_path, "import androidx.glance.material3.GlanceTheme", "import androidx.glance.GlanceTheme")
+          remove(widget_path, "import androidx.glance.layout.defaultWeight\n")
 
           # Keep the static release contract synchronized with the tested coordinates.
           validator = Path("tools/validate_project.py")
