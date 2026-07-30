@@ -42,26 +42,35 @@ jobs:
           yes | "${SDKMANAGER}" --licenses >/dev/null || true
           "${SDKMANAGER}" platform-tools "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Apply coherent stable toolchain update
+      - name: Apply coherent toolchain and source repairs
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace(path: str, old: str, new: str) -> None:
+          def replace(path: str, old: str, new: str, count: int = -1) -> None:
               p = Path(path)
               text = p.read_text(encoding="utf-8")
               if old not in text and new not in text:
-                  raise SystemExit(f"Neither old nor new token found in {path}: {old}")
+                  raise SystemExit(f"Neither old nor new token found in {path}: {old[:100]}")
               if old in text:
-                  text = text.replace(old, new)
+                  text = text.replace(old, new, count)
                   p.write_text(text, encoding="utf-8")
 
+          def remove(path: str, token: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if token in text:
+                  p.write_text(text.replace(token, ""), encoding="utf-8")
+
+          # Coherent, stable build-tool updates represented by the open Dependabot PRs.
           replace("build.gradle.kts", 'version "9.0.1"', 'version "9.3.1"')
           replace("build.gradle.kts", 'version "2.2.10"', 'version "2.4.10"')
           replace("build.gradle.kts", 'version "2.3.9"', 'version "2.3.10"')
           replace("app/build.gradle.kts", "compose-bom:2026.06.00", "compose-bom:2026.06.01")
+
+          # Keep the stable API-36 platform available on hosted runners.
           replace("app/build.gradle.kts", "androidx.core:core-ktx:1.19.0", "androidx.core:core-ktx:1.18.0")
           replace("app/build.gradle.kts", "androidx.lifecycle:lifecycle-runtime-ktx:2.11.0", "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
           replace("app/build.gradle.kts", "androidx.lifecycle:lifecycle-runtime-compose:2.11.0", "androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
@@ -75,8 +84,75 @@ jobs:
               if room_anchor not in app_text:
                   raise SystemExit("Room dependency insertion anchor not found")
               app_text = app_text.replace(room_anchor, room_anchor + room_paging, 1)
-              app.write_text(app_text, encoding="utf-8")
+          glance_anchor = '    implementation("androidx.glance:glance-material3:1.1.1")\n'
+          glance_material = '    implementation("androidx.glance:glance-material:1.1.1")\n'
+          if glance_material not in app_text:
+              if glance_anchor not in app_text:
+                  raise SystemExit("Glance dependency insertion anchor not found")
+              app_text = app_text.replace(glance_anchor, glance_anchor + glance_material, 1)
+          app.write_text(app_text, encoding="utf-8")
 
+          # Suspend-safe, deterministic bulk lookup.
+          replace(
+              "app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt",
+              '''        return ids.asSequence().distinct().chunked(SQLITE_IN_CHUNK)\n            .flatMap { tabs.findByIds(it).asSequence() }\n            .map { it.toModel() }\n            .toList()''',
+              '''        val result = mutableListOf<TabItem>()\n        for (chunk in ids.asSequence().distinct().chunked(SQLITE_IN_CHUNK)) {\n            result += tabs.findByIds(chunk).map { it.toModel() }\n        }\n        return result''',
+          )
+
+          # Kotlin 2.4 no longer accepts collection-valued += here as mutable plusAssign.
+          query_path = Path("app/src/main/java/com/tabdeck/app/data/local/TabQueryBuilder.kt")
+          query_text = query_path.read_text(encoding="utf-8")
+          query_replacements = {
+              "args += query.statuses.map { it.name }": "args.addAll(query.statuses.map { it.name })",
+              "args += query.browsers.map { it.name }": "args.addAll(query.browsers.map { it.name })",
+              "args += query.groups.sorted()": "args.addAll(query.groups.sorted())",
+              "args += query.sourceDevices.sorted()": "args.addAll(query.sourceDevices.sorted())",
+              "args += query.sourceGroups.sorted()": "args.addAll(query.sourceGroups.sorted())",
+          }
+          for old, new in query_replacements.items():
+              if old not in query_text and new not in query_text:
+                  raise SystemExit(f"TabQueryBuilder token missing: {old}")
+              query_text = query_text.replace(old, new)
+          query_path.write_text(query_text, encoding="utf-8")
+
+          # RE2/J has CASE_INSENSITIVE but not java.util.regex.Pattern.UNICODE_CASE.
+          replace(
+              "app/src/main/java/com/tabdeck/app/engine/RegexCategorizer.kt",
+              "Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE",
+              "Pattern.CASE_INSENSITIVE",
+          )
+
+          # Weight is a RowScope/ColumnScope member extension; explicit imports resolve to internal metadata.
+          for source in (
+              "app/src/main/java/com/tabdeck/app/ui/Components.kt",
+              "app/src/main/java/com/tabdeck/app/ui/Dialogs.kt",
+              "app/src/main/java/com/tabdeck/app/ui/Screens.kt",
+              "app/src/main/java/com/tabdeck/app/ui/TabDeckRoot.kt",
+          ):
+              remove(source, "import androidx.compose.foundation.layout.weight\n")
+
+          # Correct saveable package, transfer progress property, and trailing-lambda API shape.
+          replace(
+              "app/src/main/java/com/tabdeck/app/ui/Screens.kt",
+              "import androidx.compose.runtime.rememberSaveable",
+              "import androidx.compose.runtime.saveable.rememberSaveable",
+          )
+          replace("app/src/main/java/com/tabdeck/app/ui/Screens.kt", "progress.completed", "progress.processed")
+          replace(
+              "app/src/main/java/com/tabdeck/app/ui/Dialogs.kt",
+              "fun SwitchLine(label: String, checked: Boolean, onChecked: (Boolean) -> Unit, supporting: String? = null)",
+              "fun SwitchLine(label: String, checked: Boolean, supporting: String? = null, onChecked: (Boolean) -> Unit)",
+          )
+
+          # GlanceTheme lives in glance-material; defaultWeight is a RowScope member extension.
+          replace(
+              "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt",
+              "import androidx.glance.material3.GlanceTheme",
+              "import androidx.glance.material.GlanceTheme",
+          )
+          remove("app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt", "import androidx.glance.layout.defaultWeight\n")
+
+          # Keep the static release contract synchronized with the tested coordinates.
           validator = Path("tools/validate_project.py")
           text = validator.read_text(encoding="utf-8")
           replacements = {
@@ -100,7 +176,7 @@ jobs:
           Path(".github/workflows/one-shot-toolchain-convergence.yml").unlink()
           PY
 
-      - name: Validate and build converged toolchain
+      - name: Validate and build converged source
         shell: bash
         run: |
           set -euo pipefail
@@ -111,14 +187,14 @@ jobs:
           python3 tools/validate_project.py --report build-validation-report.txt
           ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
 
-      - name: Commit converged build
+      - name: Commit verified convergence
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Converge stable Android toolchain and Room paging"
+          git commit -m "Converge Android toolchain and repair Kotlin build"
           git push origin HEAD:main
 
       - name: Dispatch clean CI run
