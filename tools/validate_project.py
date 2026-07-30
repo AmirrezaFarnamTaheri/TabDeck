@@ -273,15 +273,13 @@ def validate_build_coordinates() -> None:
         "RE2/J 1.8": 're2j:1.8',
         "compileSdk 36": 'compileSdk = 36',
         "targetSdk 36": 'targetSdk = 36',
-        "Gradle 9.1.0": 'gradle-9.1.0-bin.zip',
+        "Gradle 9.6.1": 'gradle-9.6.1-bin.zip',
     }
     combined = root_build + "\n" + app_build + "\n" + wrapper
     for label, needle in required.items():
         if needle not in combined:
             fail(f"Expected build coordinate missing: {label}")
     ok("Validated pinned build coordinates")
-
-
 
 
 def validate_text_integrity() -> None:
@@ -362,7 +360,6 @@ def validate_release_contracts() -> None:
     ok("Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, and widget contracts")
 
 
-
 def validate_workflow_contracts() -> None:
     workflows = {
         "CI": ROOT / ".github/workflows/ci.yml",
@@ -379,7 +376,13 @@ def validate_workflow_contracts() -> None:
         for token in required_tokens:
             if token not in text:
                 fail(f"{label} workflow is missing {token}")
+    ci = workflows["CI"].read_text(encoding="utf-8") if workflows["CI"].is_file() else ""
     release = workflows["Release"].read_text(encoding="utf-8") if workflows["Release"].is_file() else ""
+    if "gradle wrapper --gradle-version" in ci or "gradle wrapper --gradle-version" in release:
+        fail("Workflows must execute the committed Gradle wrapper instead of regenerating it")
+    for token in ("Verify committed Gradle wrapper", "distributionSha256Sum", "./gradlew --version"):
+        if token not in ci:
+            fail(f"CI workflow contract missing: {token}")
     for token in (
         "tools/check_version.py --tag",
         "lintRelease",
