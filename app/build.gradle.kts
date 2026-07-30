@@ -90,7 +90,7 @@ ksp {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     val roomVersion = "2.8.4"
 
     implementation("androidx.core:core-ktx:1.19.0")
