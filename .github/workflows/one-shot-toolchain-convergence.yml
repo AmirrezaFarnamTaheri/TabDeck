@@ -1,0 +1,141 @@
+name: One-shot Android toolchain convergence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-shot-toolchain-convergence.yml
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  converge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install Android SDK 37
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" platform-tools "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Apply coherent Android toolchain update
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if old not in text and new not in text:
+                  raise SystemExit(f"Neither old nor new token found in {path}: {old}")
+              if old in text:
+                  text = text.replace(old, new)
+                  p.write_text(text, encoding="utf-8")
+
+          replace("build.gradle.kts", 'version "9.0.1"', 'version "9.3.1"')
+          replace("build.gradle.kts", 'version "2.2.10"', 'version "2.4.10"')
+          replace("build.gradle.kts", 'version "2.3.9"', 'version "2.3.10"')
+          replace("app/build.gradle.kts", "compileSdk = 36", "compileSdk = 37")
+          replace("app/build.gradle.kts", "compose-bom:2026.06.00", "compose-bom:2026.06.01")
+
+          app = Path("app/build.gradle.kts")
+          app_text = app.read_text(encoding="utf-8")
+          room_anchor = '    implementation("androidx.room:room-ktx:$roomVersion")\n'
+          room_paging = '    implementation("androidx.room:room-paging:$roomVersion")\n'
+          if room_paging not in app_text:
+              if room_anchor not in app_text:
+                  raise SystemExit("Room dependency insertion anchor not found")
+              app_text = app_text.replace(room_anchor, room_anchor + room_paging, 1)
+              app.write_text(app_text, encoding="utf-8")
+
+          for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
+              replace(workflow, 'ANDROID_API: "36"', 'ANDROID_API: "37"')
+
+          validator = Path("tools/validate_project.py")
+          text = validator.read_text(encoding="utf-8")
+          replacements = {
+              '"AGP 9.0.1": \'com.android.application") version "9.0.1"\'': '"AGP 9.3.1": \'com.android.application") version "9.3.1"\'',
+              '"Kotlin 2.2.10": \'org.jetbrains.kotlin.plugin.compose") version "2.2.10"\'': '"Kotlin 2.4.10": \'org.jetbrains.kotlin.plugin.compose") version "2.4.10"\'',
+              '"KSP 2.3.9": \'com.google.devtools.ksp") version "2.3.9"\'': '"KSP 2.3.10": \'com.google.devtools.ksp") version "2.3.10"\'',
+              '"Compose BOM 2026.06.00": \'compose-bom:2026.06.00\'': '"Compose BOM 2026.06.01": \'compose-bom:2026.06.01\'',
+              '"compileSdk 36": \'compileSdk = 36\'': '"compileSdk 37": \'compileSdk = 37\'',
+          }
+          for old, new in replacements.items():
+              if old not in text and new not in text:
+                  raise SystemExit(f"Validator coordinate token not found: {old}")
+              text = text.replace(old, new)
+          room_validation_anchor = '        "Room 2.8.4": \'val roomVersion = "2.8.4"\',\n'
+          room_validation = '        "Room Paging 2.8.4": \'androidx.room:room-paging:$roomVersion\',\n'
+          if room_validation not in text:
+              if room_validation_anchor not in text:
+                  raise SystemExit("Validator Room insertion anchor not found")
+              text = text.replace(room_validation_anchor, room_validation_anchor + room_validation, 1)
+          validator.write_text(text, encoding="utf-8")
+
+          Path(".github/workflows/one-shot-toolchain-convergence.yml").unlink()
+          PY
+
+      - name: Validate and build converged toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --version
+          python3 tools/check_version.py
+          bash tools/run_core_checks.sh
+          python3 tools/validate_project.py --report build-validation-report.txt
+          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
+
+      - name: Commit converged build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Converge Android 37 toolchain and Room paging"
+          git push origin HEAD:main
+
+      - name: Dispatch clean CI run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TabDeck-toolchain-convergence-diagnostics
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            build-validation-report.txt
+            app/build/reports/**
+            app/build/test-results/**
