@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">TabDeck</string>
+    <string name="bridge_channel_name">TabDeck bridge</string>
+    <string name="bridge_channel_description">Receives authenticated tab sessions during a timed local bridge session</string>
+    <string name="bridge_notification_title">TabDeck bridge</string>
+    <string name="bridge_notification_starting">Starting a protected local capture session…</string>
+    <string name="bridge_notification_active">Listening for authenticated imports for up to %1$d minutes</string>
+    <string name="stop_bridge">Stop</string>
+    <string name="widget_description">Active tabs, duplicate count, groups, and quick TabDeck actions</string>
+    <string name="widget_loading">Loading TabDeck…</string>
+    <string name="shortcut_import_short">Import tabs</string>
+    <string name="shortcut_import_long">Paste or import tabs into TabDeck</string>
+    <string name="shortcut_library_short">Tab library</string>
+    <string name="shortcut_library_long">Open the unified tab library</string>
+    <string name="shortcut_transfer_short">Transfer tabs</string>
+    <string name="shortcut_transfer_long">Open the controlled transfer deck</string>
+    <string name="shortcut_automate_short">Automate tabs</string>
+    <string name="shortcut_automate_long">Open rules, smart views, decks, and groups</string>
+    <string name="shortcut_commands_short">Tab commands</string>
+    <string name="shortcut_commands_long">Open the TabDeck command palette</string>
+    <string name="quick_widget_description">Fast access to TabDeck import, library, transfer, and connector controls</string>
+</resources>

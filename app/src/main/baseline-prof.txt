@@ -1,0 +1,16 @@
+Lcom/tabdeck/app/TabDeckApplication;
+Lcom/tabdeck/app/MainActivity;
+Lcom/tabdeck/app/TabDeckViewModel;
+Lcom/tabdeck/app/data/TabDeckRepository;
+Lcom/tabdeck/app/data/local/TabDeckDatabase;
+Lcom/tabdeck/app/data/local/TabQueryBuilder;
+Lcom/tabdeck/app/data/local/LibraryQueryCodec;
+Lcom/tabdeck/app/engine/UrlExtractor;
+Lcom/tabdeck/app/engine/UrlNormalizer;
+Lcom/tabdeck/app/engine/DedupeEngine;
+Lcom/tabdeck/app/engine/RegexCategorizer;
+Lcom/tabdeck/app/transfer/BrowserTransferCoordinator;
+Lcom/tabdeck/app/ui/TabDeckRootKt;
+Lcom/tabdeck/app/ui/ScreensKt;
+Lcom/tabdeck/app/ui/ComponentsKt;
+Lcom/tabdeck/app/ui/DialogsKt;

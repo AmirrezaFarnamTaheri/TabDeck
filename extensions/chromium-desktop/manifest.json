@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "TabDeck Desktop Bridge",
+  "version": "1.0.0",
+  "description": "Preview, deduplicate and send Chrome, Brave, Opera, Edge or Vivaldi tabs and native tab groups to TabDeck on Android.",
+  "permissions": ["tabs", "tabGroups", "storage"],
+  "optional_host_permissions": ["http://*/*"],
+  "action": {
+    "default_title": "TabDeck session control",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    }
+  },
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  }
+}

@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: "17"
+  GRADLE_VERSION: "9.1.0"
+  ANDROID_API: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+
+jobs:
+  verify:
+    name: Verify and build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Generate and verify Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version "${GRADLE_VERSION}" --distribution-type bin
+          chmod +x gradlew
+          echo "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+          ./gradlew --version
+
+      - name: Check synchronized versions
+        run: python3 tools/check_version.py
+
+      - name: Run executable core checks
+        run: bash tools/run_core_checks.sh
+
+      - name: Run static project validation
+        run: python3 tools/validate_project.py --report build-validation-report.txt
+
+      - name: Test, lint, and assemble
+        run: ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
+
+      - name: Upload verification outputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TabDeck-CI-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/reports/**
+            app/build/test-results/**
+            build-validation-report.txt

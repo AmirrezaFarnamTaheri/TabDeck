@@ -1,0 +1,8 @@
+Lcom/tabdeck/app/TabDeckApplication;
+Lcom/tabdeck/app/MainActivity;
+Lcom/tabdeck/app/TabDeckViewModel;
+Lcom/tabdeck/app/data/TabDeckRepository;
+Lcom/tabdeck/app/data/local/TabDeckDatabase;
+Lcom/tabdeck/app/ui/TabDeckRootKt;
+Lcom/tabdeck/app/ui/ScreensKt;
+Lcom/tabdeck/app/ui/ComponentsKt;

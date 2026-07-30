@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example v1.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: "17"
+  GRADLE_VERSION: "9.1.0"
+  ANDROID_API: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+
+jobs:
+  release:
+    name: Build, verify, attest, and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid release tag: ${TAG}" >&2
+            exit 1
+          }
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release_tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify tag points at checked-out commit
+        shell: bash
+        env:
+          TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags
+          test "$(git rev-list -n 1 "${TAG}")" = "$(git rev-parse HEAD)"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+          cache-read-only: true
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Generate and verify Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version "${GRADLE_VERSION}" --distribution-type bin
+          chmod +x gradlew
+          echo "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3  gradle/wrapper/gradle-wrapper.jar" | sha256sum -c -
+          ./gradlew --version
+
+      - name: Verify synchronized release version
+        shell: bash
+        env:
+          TAG: ${{ steps.release_tag.outputs.tag }}
+        run: python3 tools/check_version.py --tag "${TAG}"
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TABDECK_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.TABDECK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TABDECK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.TABDECK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${KEYSTORE_BASE64:?TABDECK_KEYSTORE_BASE64 is required}"
+          : "${KEYSTORE_PASSWORD:?TABDECK_KEYSTORE_PASSWORD is required}"
+          : "${KEY_ALIAS:?TABDECK_KEY_ALIAS is required}"
+          : "${KEY_PASSWORD:?TABDECK_KEY_PASSWORD is required}"
+          printf '%s' "${KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/tabdeck-release.jks"
+          test -s "${RUNNER_TEMP}/tabdeck-release.jks"
+
+      - name: Run source validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/run_core_checks.sh
+          python3 tools/validate_project.py --report build-validation-report.txt
+
+      - name: Build signed Android release
+        env:
+          TABDECK_KEYSTORE_PATH: ${{ runner.temp }}/tabdeck-release.jks
+          TABDECK_KEYSTORE_PASSWORD: ${{ secrets.TABDECK_KEYSTORE_PASSWORD }}
+          TABDECK_KEY_ALIAS: ${{ secrets.TABDECK_KEY_ALIAS }}
+          TABDECK_KEY_PASSWORD: ${{ secrets.TABDECK_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace clean test lintRelease assembleRelease bundleRelease
+
+      - name: Verify signed Android artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "${APK}"
+          test -s "${AAB}"
+          "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/zipalign" -c -v 4 "${APK}"
+          "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner" verify --verbose --print-certs "${APK}"
+          jarsigner -verify -strict -certs "${AAB}"
+
+      - name: Package deterministic release set
+        run: python3 tools/package_release.py --require-android-artifacts --output-dir dist
+
+      - name: Verify release checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c TabDeck-v*-SHA256.txt
+
+      - name: Upload release workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: TabDeck-${{ steps.release_tag.outputs.tag }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+          path: dist/*
+
+      - name: Attest release assets
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" dist/* \
+            --verify-tag \
+            --title "TabDeck ${TAG}" \
+            --notes-file docs/RELEASE_NOTES.md
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: rm -f "${RUNNER_TEMP}/tabdeck-release.jks"

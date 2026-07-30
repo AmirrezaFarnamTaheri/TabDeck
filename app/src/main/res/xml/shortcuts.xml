@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="import_tabs"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_import_short"
+        android:shortcutLongLabel="@string/shortcut_import_long">
+        <intent
+            android:action="com.tabdeck.app.OPEN_IMPORT"
+            android:targetPackage="com.tabdeck.app"
+            android:targetClass="com.tabdeck.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_library"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_library_short"
+        android:shortcutLongLabel="@string/shortcut_library_long">
+        <intent
+            android:action="com.tabdeck.app.OPEN_LIBRARY"
+            android:targetPackage="com.tabdeck.app"
+            android:targetClass="com.tabdeck.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="transfer_tabs"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_transfer_short"
+        android:shortcutLongLabel="@string/shortcut_transfer_long">
+        <intent
+            android:action="com.tabdeck.app.OPEN_TRANSFER"
+            android:targetPackage="com.tabdeck.app"
+            android:targetClass="com.tabdeck.app.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="automate_tabs"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_automate_short"
+        android:shortcutLongLabel="@string/shortcut_automate_long">
+        <intent
+            android:action="com.tabdeck.app.OPEN_AUTOMATE"
+            android:targetPackage="com.tabdeck.app"
+            android:targetClass="com.tabdeck.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="command_palette"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_commands_short"
+        android:shortcutLongLabel="@string/shortcut_commands_long">
+        <intent
+            android:action="com.tabdeck.app.OPEN_COMMAND_PALETTE"
+            android:targetPackage="com.tabdeck.app"
+            android:targetClass="com.tabdeck.app.MainActivity" />
+    </shortcut>
+</shortcuts>
