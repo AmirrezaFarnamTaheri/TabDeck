@@ -120,12 +120,17 @@ jobs:
           replace(
               regex_path,
               "fun categorize(tab: TabItem, rules: List<CompiledRule>): TabItem {",
-              "private fun categorizeCompiled(tab: TabItem, rules: List<CompiledRule>): TabItem {",
+              "internal fun categorizeCompiled(tab: TabItem, rules: List<CompiledRule>): TabItem {",
           )
           replace(
               regex_path,
               "return tabs.map { categorize(it, compiled) }",
               "return tabs.map { categorizeCompiled(it, compiled) }",
+          )
+          replace(
+              "app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt",
+              "RegexCategorizer.categorize(base, compiledRules)",
+              "RegexCategorizer.categorizeCompiled(base, compiledRules)",
           )
 
           # Weight is a RowScope/ColumnScope member extension; explicit imports resolve to internal metadata.
