@@ -1,4 +1,4 @@
-name: Package validated PR review remediation
+name: Publish validated non-workflow remediation
 
 on:
   pull_request:
@@ -8,21 +8,21 @@ on:
       - .github/workflows/review-remediation-pr.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: package-review-remediation-${{ github.event.pull_request.number }}
+  group: publish-review-remediation-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
-  package:
+  publish:
     if: github.event.pull_request.head.ref == 'codex/deep-improvement-plan'
-    name: Build validated remediation snapshot
+    name: Verify and publish non-workflow fixes
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Check out PR branch
+      - name: Check out PR branch without ambient credentials
         uses: actions/checkout@v6
         with:
           ref: codex/deep-improvement-plan
@@ -61,22 +61,24 @@ jobs:
           node --check extensions/chromium-desktop/popup.js
           node --check extensions/firefox-android/popup.js
 
-      - name: Package exact final source snapshot
+      - name: Commit and push verified non-workflow fixes
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rm -f .github/workflows/review-remediation.yml
-          rm -f .github/workflows/review-remediation-pr.yml
-          rm -f tools/__pycache__/versioning.cpython-312.pyc
-          tar --exclude=.git -czf /tmp/tabdeck-remediated-source.tar.gz .
-          sha256sum /tmp/tabdeck-remediated-source.tar.gz > /tmp/tabdeck-remediated-source.sha256
-
-      - name: Upload validated source snapshot
-        uses: actions/upload-artifact@v7
-        with:
-          name: tabdeck-review-remediation-${{ github.sha }}
-          path: |
-            /tmp/tabdeck-remediated-source.tar.gz
-            /tmp/tabdeck-remediated-source.sha256
-          if-no-files-found: error
-          retention-days: 1
+          git checkout HEAD -- \
+            .github/workflows/release.yml \
+            .github/workflows/review-remediation.yml \
+            .github/workflows/review-remediation-pr.yml
+          git rm -f --ignore-unmatch tools/__pycache__/versioning.cpython-312.pyc
+          git add -A
+          git diff --cached -- .github/workflows | grep -q . && {
+            echo 'Refusing to push workflow changes with the Actions token.' >&2
+            exit 1
+          } || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Address all non-workflow PR review feedback'
+          AUTH="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${AUTH}" push origin HEAD:codex/deep-improvement-plan
