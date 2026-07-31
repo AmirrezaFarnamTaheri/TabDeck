@@ -2,14 +2,15 @@
 
 ## Android application
 
-### Install a published APK
+### Install the GitHub Release APK
 
-1. Download `TabDeck-v1.0.0.apk` and `TabDeck-v1.0.0-SHA256.txt` from the matching GitHub Release.
+1. Download `TabDeck-v1.0.0.apk` and `TabDeck-v1.0.0-SHA256.txt` from the same GitHub Release.
 2. Verify the APK checksum before installing.
-3. On Android, allow installation from the file manager or browser used to open the APK when prompted.
-4. Install the APK and complete the in-app capability guide.
+3. Optionally confirm the APK signing-certificate SHA-256 is `8265D1219753753DC36635BAAEAB887FE63742C93CD686A498E5B66683A704A7`.
+4. On Android, allow installation from the file manager or browser used to open the APK when prompted.
+5. Install the APK and complete the in-app capability guide.
 
-The release AAB is for application-store or managed-distribution pipelines; it is not directly installable on a device.
+TabDeck publishes an APK directly through GitHub. No application store, account, or cloud service is required.
 
 ### Build from source
 
@@ -26,6 +27,7 @@ Requirements:
 python3 tools/check_version.py
 bash tools/run_core_checks.sh
 python3 tools/validate_project.py
+python3 tools/validate_simple_release.py
 ./gradlew clean test lintDebug assembleDebug
 ```
 
@@ -33,10 +35,10 @@ The debug APK is produced under `app/build/outputs/apk/debug/`.
 
 ## Firefox Android connector
 
-The unsigned XPI is a development artifact. Installation support differs by Firefox Android channel and release. The connector needs access to tabs and optional permission for the exact bridge endpoint selected by the user.
+The unsigned XPI is a development artifact. Installation support differs by Firefox Android channel and release.
 
 1. Start a TabDeck bridge session from **Control room**.
-2. Note the endpoint and token.
+2. Use the loopback endpoint and token shown by TabDeck.
 3. Install the XPI using a Firefox Android development/add-on path supported by the chosen channel.
 4. Open the connector, enter the endpoint and token, and use **Test bridge** before sending tabs.
 5. Review the snapshot summary before capture or cleanup.
@@ -49,15 +51,23 @@ The connector cannot bypass Firefox permissions or unsupported mobile extension 
 2. Open the browser's extensions page.
 3. Enable developer mode.
 4. Choose **Load unpacked** and select the extracted folder.
-5. Start a TabDeck LAN bridge session, enter its private-network endpoint and token, and run **Test bridge**.
+5. Connect the Android device and authorize ADB.
+6. Run:
 
-This connector captures desktop Chromium-family tabs and can send their native desktop group metadata to the Android inventory. It is not an Android Chrome extension.
+```bash
+adb forward tcp:48721 tcp:48721
+```
+
+7. Start the TabDeck bridge and enter `http://127.0.0.1:48721/api/v3/import` plus the current token in the extension.
+8. Run **Test bridge**, then send the reviewed session.
+
+The bridge is loopback-only. Direct LAN/private-IP access is not supported.
 
 ## Windows Android Desktop Link
 
 Requirements:
 
-- Windows PowerShell/WPF
+- Windows PowerShell 7.2+
 - Android platform-tools with `adb.exe`
 - USB debugging explicitly enabled and authorized by the device owner
 - A supported Android Chromium build exposing a DevTools socket
@@ -66,4 +76,4 @@ Extract `TabDeck-v1.0.0-Desktop-Link.zip`, read its included README, and run `St
 
 ## Upgrade and data safety
 
-Before upgrading, create a full JSON backup from **Control room**. Product version numbers do not replace internal format versions; existing Room, backup, query, and bridge compatibility identifiers are preserved deliberately.
+Community GitHub APKs use the same repository-published signing key, so a later version can upgrade an earlier community build. Before upgrading, create a full JSON backup from **Control room**. Product version numbers do not replace internal format versions; existing Room, backup, query, and bridge compatibility identifiers are preserved deliberately.
