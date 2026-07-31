@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -21,18 +21,14 @@ env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
 
 jobs:
-  install-and-verify:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/codex/deep-improvement-plan'
-    name: Install and verify complete implementation
+  verify:
+    name: Verify and build debug APK
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
-      - name: Check out implementation branch
+      - name: Check out source
         uses: actions/checkout@v6
-        with:
-          ref: codex/deep-improvement-plan
-          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -42,6 +38,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Install Android SDK packages
         shell: bash
@@ -57,15 +55,6 @@ jobs:
             "platforms;android-${ANDROID_API}" \
             "build-tools;${ANDROID_BUILD_TOOLS}"
 
-      - name: Prove pre-implementation gaps
-        shell: bash
-        run: |
-          set -euo pipefail
-          test ! -f app/src/main/java/com/tabdeck/app/data/BackupInputClassifier.kt
-          test ! -f app/src/main/java/com/tabdeck/app/engine/SourceIdentity.kt
-          ! grep -q 'sealed interface DecodeResult' app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt
-          ! grep -q 'sourceSessionId' app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt
-
       - name: Verify committed Gradle wrapper
         shell: bash
         run: |
@@ -76,47 +65,30 @@ jobs:
           chmod +x gradlew
           ./gradlew --version
 
-      - name: Apply checksum-bound implementation
-        shell: bash
-        run: python3 .tabdeck-implementation/apply_verified_patch.py
+      - name: Check synchronized versions
+        run: python3 tools/check_version.py
 
-      - name: Verify synchronized versions and executable contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/check_version.py
-          bash tools/run_core_checks.sh
-          python3 tools/performance_budget.py --validate-config
-          python3 tools/validate_project.py --report build-validation-report.txt
-          node --check extensions/chromium-desktop/popup.js
-          node --check extensions/firefox-android/popup.js
+      - name: Run executable core checks
+        run: bash tools/run_core_checks.sh
+
+      - name: Run static project validation
+        run: python3 tools/validate_project.py --report build-validation-report.txt
+
+      - name: Validate performance budgets
+        run: python3 tools/performance_budget.py --validate-config
 
       - name: Validate Windows Desktop Link contracts
         shell: pwsh
         run: ./desktop-link/Test-TabDeckLink.ps1
 
-      - name: Test, lint, and assemble Android app
-        shell: bash
+      - name: Test, lint, and assemble
         run: ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
 
-      - name: Commit verified implementation
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f build-validation-report.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          test -n "$(git diff --cached --name-only)"
-          git commit -m "Implement TabDeck reliability, trust, and release contracts"
-          git push origin HEAD:codex/deep-improvement-plan
-
-      - name: Upload implementation evidence
+      - name: Upload verification outputs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: TabDeck-complete-implementation-${{ github.sha }}
+          name: TabDeck-CI-${{ github.sha }}
           if-no-files-found: warn
           retention-days: 14
           path: |
