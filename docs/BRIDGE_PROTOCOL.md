@@ -10,7 +10,7 @@ Canonical endpoint:
 
 - same device or explicit ADB forward: `http://127.0.0.1:48721/api/v3/import`
 
-Direct LAN exposure is disabled. Private IP filtering and browser `Origin` checks are not peer authentication and do not provide transport confidentiality. Any future LAN mode requires explicit opt-in, TLS with peer authentication, peer/address allowlisting, certificate lifecycle management, and immediate token/peer revocation.
+Direct LAN exposure is disabled. Private IP filtering and browser `Origin` checks are not peer authentication and do not provide transport confidentiality. Any future LAN mode requires explicit opt-in, authenticated TLS, peer/address allowlisting, certificate lifecycle management, and immediate token/peer revocation.
 
 Compatibility routes `/api/v1/import` and `/api/v2/import` pass through the same current parser and validation boundary.
 
@@ -46,7 +46,7 @@ TabDeck persists its own UUID and a bounded opaque source ID derived from the se
 - retries in the same session resolve to the same source identity;
 - reused tab IDs in a later session resolve to a different identity;
 - legacy payloads remain importable but cannot authorize destructive complete-snapshot reconciliation;
-- `identityVersion` must be exactly `1` before complete-snapshot reconciliation. Unknown versions are rejected or safely downgraded before reconciliation.
+- `identityVersion` is currently `1`; values other than exactly `1` must be rejected or downgraded to non-complete import before reconciliation.
 
 ## Import request
 
@@ -56,6 +56,36 @@ Content-Type: application/json
 X-TabDeck-Token: <64-hex-character token>
 X-TabDeck-Request-Id: <client-generated id>
 ```
+
+```json
+{
+  "browser": "Firefox Nightly",
+  "completeSnapshot": true,
+  "sourceSessionId": "41a26c82-8c7b-4cad-b6ad-526f067b80d9",
+  "identityVersion": 1,
+  "sourceLabel": "Firefox Nightly Android",
+  "deviceName": "Pixel",
+  "capturedAt": 1785400000000,
+  "tabs": [
+    {
+      "id": "browser-tab-123",
+      "deviceId": "Pixel",
+      "url": "https://developer.android.com/",
+      "title": "Android Developers",
+      "group": "Research",
+      "pinned": true,
+      "createdAt": 1785399000000,
+      "lastSeenAt": 1785400000000
+    }
+  ]
+}
+```
+
+## Source reconciliation
+
+Canonical source equality is derived from connector/device/browser/profile/session/window/external-tab attributes. A later retry updates the same local record while preserving user-owned group, notes, tags, lifecycle state, and transfer counters.
+
+`completeSnapshot=true` is honored only when `identityVersion` is exactly `1` and browser, device, source session, and every tab ID are provable. Unsupported or missing identity versions may still be imported non-destructively, but cannot participate in complete-snapshot reconciliation. A complete zero-tab payload is valid. Partial/current-window/protected-pinned snapshots must set `completeSnapshot=false`.
 
 ## Validation and limits
 
