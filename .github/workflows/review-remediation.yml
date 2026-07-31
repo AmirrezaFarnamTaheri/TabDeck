@@ -1,0 +1,563 @@
+name: Apply PR review remediation
+
+on:
+  push:
+    branches:
+      - codex/deep-improvement-plan
+    paths:
+      - .github/workflows/review-remediation.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: review-remediation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    name: Apply and verify review fixes
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Check out PR branch without ambient credentials
+        uses: actions/checkout@v6
+        with:
+          ref: codex/deep-improvement-plan
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Apply deterministic remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+
+          def replace_once(relative: str, old: str, new: str) -> None:
+              path = ROOT / relative
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{relative}: expected one replacement, found {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def write(relative: str, content: str) -> None:
+              path = ROOT / relative
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content, encoding="utf-8")
+
+          replace_once(
+              "desktop-link/TabDeckLink.ps1",
+              '''    $opened = 0
+              $verified = [Collections.Generic.List[object]]::new()
+              foreach ($tab in $selected) {
+                  try {
+                      $encoded = [Uri]::EscapeDataString($tab.Url)
+                      $created = Invoke-JsonEndpoint "http://127.0.0.1:$port/json/new?$encoded" -Method PUT
+                      if (-not $created.id -or $created.url -notmatch '^https?://') { throw 'Destination did not confirm a page target.' }
+                      if (-not (Test-DestinationTarget -Port $port -TargetId ([string]$created.id) -ExpectedUrl $tab.Url)) {
+                          throw 'Destination target was not observable after creation; source remains open.'
+                      }
+                      $opened++
+                      $verified.Add($tab)
+                      if ($opened % 20 -eq 0) { Set-Status "Opening tabs: $opened/$($selected.Count)"; Pump-Ui }
+                      Start-Sleep -Milliseconds 120
+                  } catch { }
+              }
+          ''',
+              '''    $opened = 0
+              $processed = 0
+              $verified = [Collections.Generic.List[object]]::new()
+              foreach ($tab in $selected) {
+                  $processed++
+                  try {
+                      $encoded = [Uri]::EscapeDataString($tab.Url)
+                      $created = Invoke-JsonEndpoint "http://127.0.0.1:$port/json/new?$encoded" -Method PUT
+                      if (-not $created.id -or $created.url -notmatch '^https?://') { throw 'Destination did not confirm a page target.' }
+                      if (-not (Test-DestinationTarget -Port $port -TargetId ([string]$created.id) -ExpectedUrl $tab.Url)) {
+                          throw 'Destination target was not observable after creation; source remains open.'
+                      }
+                      $opened++
+                      $verified.Add($tab)
+                      Start-Sleep -Milliseconds 120
+                  } catch { }
+                  if ($processed % 10 -eq 0 -or $processed -eq $selected.Count) {
+                      Set-Status "Processed tabs: $processed/$($selected.Count) ($opened opened)"
+                      Pump-Ui
+                  }
+              }
+          ''',
+          )
+
+          replace_once(
+              "desktop-link/Test-TabDeckLink.ps1",
+              "    'Destination target was not observable after creation; source remains open.'\n",
+              "    'Destination target was not observable after creation; source remains open.',\n"
+              "    'Processed tabs: $processed/$($selected.Count) ($opened opened)'\n",
+          )
+
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt",
+              '''        val sourceSessionId = cleanText(
+                      root.optString("sourceSessionId", root.optString("sessionId")),
+                      MAX_SOURCE_SESSION_ID_LENGTH,
+                  )
+                  val sessionGroup = cleanText(root.optString("group"), 120)
+          ''',
+              '''        val sourceSessionId = cleanText(
+                      root.optString("sourceSessionId", root.optString("sessionId")),
+                      MAX_SOURCE_SESSION_ID_LENGTH,
+                  )
+                  val identityVersion = root.optInt("identityVersion", 0)
+                  val sessionGroup = cleanText(root.optString("group"), 120)
+          ''',
+          )
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt",
+              '''        val identityIsProvable = sourceBrowser.isLaunchTarget &&
+                      deviceName.isNotBlank() &&
+          ''',
+              '''        val identityIsProvable = identityVersion == CURRENT_IDENTITY_VERSION &&
+                      sourceBrowser.isLaunchTarget &&
+                      deviceName.isNotBlank() &&
+          ''',
+          )
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt",
+              '''    private const val MAX_TABS_PER_IMPORT = 25_000
+              private const val MAX_SOURCE_SESSION_ID_LENGTH = 256
+          ''',
+              '''    private const val CURRENT_IDENTITY_VERSION = 1
+              private const val MAX_TABS_PER_IMPORT = 25_000
+              private const val MAX_SOURCE_SESSION_ID_LENGTH = 256
+          ''',
+          )
+
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/model/Models.kt",
+              '''enum class BridgeScope(val label: String, val available: Boolean) {
+              THIS_DEVICE("This device only (loopback)", true),
+              LOCAL_NETWORK("Local network (requires authenticated TLS; unavailable)", false),
+          }
+          ''',
+              '''enum class BridgeScope(val label: String, val available: Boolean) {
+              THIS_DEVICE("This device only (loopback; fixed)", true),
+          }
+          ''',
+          )
+
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/data/SettingsStore.kt",
+              '        val bridgeScope = stringPreferencesKey("bridge_scope")\n',
+              '',
+          )
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/data/SettingsStore.kt",
+              '''        bridgeScope = enumOrDefault(prefs[Keys.bridgeScope], BridgeScope.THIS_DEVICE)
+                      .takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE,
+          ''',
+              '''        bridgeScope = BridgeScope.THIS_DEVICE,
+          ''',
+          )
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/data/SettingsStore.kt",
+              '        prefs[Keys.bridgeScope] = value.bridgeScope.takeIf(BridgeScope::available)?.name ?: BridgeScope.THIS_DEVICE.name\n',
+              '',
+          )
+          replace_once(
+              "app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt",
+              '''        bridgeScope = enumOrDefault(value.optString("bridgeScope"), BridgeScope.THIS_DEVICE)
+                      .takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE,
+          ''',
+              '''        bridgeScope = BridgeScope.THIS_DEVICE,
+          ''',
+          )
+
+          release_ref = "          ref: $" + "{{ github.event_name == 'workflow_dispatch' && github.sha || steps.release_tag.outputs.tag }}\n"
+          replace_once(
+              ".github/workflows/release.yml",
+              '''        with:
+                    fetch-depth: 0
+                    fetch-tags: true
+          ''',
+              "        with:\n" + release_ref + "          fetch-depth: 0\n          fetch-tags: true\n",
+          )
+
+          replace_once(
+              "tools/validate_project.py",
+              '    snapshot_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt").read_text(encoding="utf-8")\n',
+              '',
+          )
+          replace_once(
+              "tools/validate_project.py",
+              '    bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")\n',
+              '    bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")\n'
+              '    bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")\n',
+          )
+          replace_once(
+              "tools/validate_project.py",
+              '        "typed backup classification": "sealed interface DecodeResult" in snapshot_codec and "decodeClassified" in view_model,\n',
+              '        "typed backup classification": "sealed interface DecodeResult" in backup and "decodeClassified" in view_model,\n',
+          )
+          replace_once(
+              "tools/validate_project.py",
+              '        "session-scoped source identity": "SourceIdentity.encodeTabId" in (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8"),\n',
+              '        "session-scoped source identity": "SourceIdentity.encodeTabId" in bridge_parser,\n'
+              '        "identity-version reconciliation guard": "identityVersion == CURRENT_IDENTITY_VERSION" in bridge_parser,\n',
+          )
+          replace_once(
+              "tools/validate_project.py",
+              '''def validate_extension_contracts() -> None:
+              for folder in [ROOT / "extensions/firefox-android", ROOT / "extensions/chromium-desktop"]:
+                  manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+          ''',
+              '''def validate_extension_contracts() -> None:
+              canonical_runtime = (ROOT / "extensions/shared/bridge-runtime.js").read_text(encoding="utf-8")
+              for folder in [ROOT / "extensions/firefox-android", ROOT / "extensions/chromium-desktop"]:
+                  manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+                  generated_runtime = folder / "bridge-runtime.js"
+                  if not generated_runtime.is_file() or generated_runtime.read_text(encoding="utf-8") != canonical_runtime:
+                      fail(f"Generated bridge runtime is missing or stale in {folder.relative_to(ROOT)}")
+                  popup_html = (folder / "popup.html").read_text(encoding="utf-8")
+                  if popup_html.find('src="bridge-runtime.js"') < 0 or popup_html.find('src="bridge-runtime.js"') > popup_html.find('src="popup.js"'):
+                      fail(f"Shared bridge runtime must load before popup.js in {folder.relative_to(ROOT)}")
+          ''',
+          )
+          replace_once(
+              "tools/validate_project.py",
+              '    ok("Validated extension manifest file references")\n',
+              '    ok("Validated extension manifests and synchronized bridge runtime")\n',
+          )
+
+          bridge_runtime = '''// Generated copies in each extension root are synchronized from this canonical source.
+          (() => {
+            function endpointInfo(value) {
+              const url = new URL(value);
+              if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
+              const host = url.hostname.toLowerCase();
+              const ipv6 = host.replace(/^\\[|\\]$/g, '');
+              const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
+              if (!loopback) throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
+              if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
+              url.pathname = '/api/v3/import';
+              url.search = '';
+              url.hash = '';
+              return { url: url.toString(), permission: `${url.origin}/*` };
+            }
+
+            async function getSourceSession(storage) {
+              const key = 'tabdeckSourceSessionId';
+              const stored = await storage.get({ [key]: '' });
+              if (stored[key]) return { id: stored[key], reliable: storage.reliable };
+              const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              await storage.set({ [key]: id });
+              return { id, reliable: storage.reliable };
+            }
+
+            globalThis.TabDeckBridgeRuntime = Object.freeze({ endpointInfo, getSourceSession });
+          })();
+          '''
+          write("extensions/shared/bridge-runtime.js", bridge_runtime)
+          write("extensions/chromium-desktop/bridge-runtime.js", bridge_runtime)
+          write("extensions/firefox-android/bridge-runtime.js", bridge_runtime)
+
+          sync_script = '''#!/usr/bin/env python3
+          """Synchronize the canonical extension bridge runtime into both extension packages."""
+          from pathlib import Path
+
+          root = Path(__file__).resolve().parents[1]
+          source = root / "extensions/shared/bridge-runtime.js"
+          content = source.read_text(encoding="utf-8")
+          for destination in (
+              root / "extensions/chromium-desktop/bridge-runtime.js",
+              root / "extensions/firefox-android/bridge-runtime.js",
+          ):
+              destination.write_text(content, encoding="utf-8")
+          print("Synchronized extension bridge runtime")
+          '''
+          write("tools/sync_extension_runtime.py", sync_script)
+
+          replace_once(
+              "extensions/chromium-desktop/popup.js",
+              '''function storageGet(defaults) { return new Promise(resolve => chrome.storage.local.get(defaults, resolve)); }
+          function storageSet(values) { return new Promise(resolve => chrome.storage.local.set(values, resolve)); }
+          function sessionGet(defaults) {
+            const area = chrome.storage.session;
+            return area ? new Promise(resolve => area.get(defaults, resolve)) : storageGet(defaults);
+          }
+          function sessionSet(values) {
+            const area = chrome.storage.session;
+            return area ? new Promise(resolve => area.set(values, resolve)) : storageSet(values);
+          }
+          async function getSourceSession() {
+            const key = 'tabdeckSourceSessionId';
+            const stored = await sessionGet({ [key]: '' });
+            if (stored[key]) return { id: stored[key], reliable: Boolean(chrome.storage.session) };
+            const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            await sessionSet({ [key]: id });
+            return { id, reliable: Boolean(chrome.storage.session) };
+          }
+          ''',
+              '''function storageGet(defaults) { return new Promise(resolve => chrome.storage.local.get(defaults, resolve)); }
+          function storageSet(values) { return new Promise(resolve => chrome.storage.local.set(values, resolve)); }
+          const sourceSessionStorage = {
+            reliable: Boolean(chrome.storage.session),
+            get(defaults) {
+              const area = chrome.storage.session || chrome.storage.local;
+              return new Promise(resolve => area.get(defaults, resolve));
+            },
+            set(values) {
+              const area = chrome.storage.session || chrome.storage.local;
+              return new Promise(resolve => area.set(values, resolve));
+            }
+          };
+          const getSourceSession = () => TabDeckBridgeRuntime.getSourceSession(sourceSessionStorage);
+          ''',
+          )
+          replace_once(
+              "extensions/chromium-desktop/popup.js",
+              '''function endpointInfo(value) {
+            const url = new URL(value);
+            if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
+            const host = url.hostname.toLowerCase();
+            const ipv6 = host.replace(/^\\[|\\]$/g, '');
+            const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
+            if (!loopback) throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
+            if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
+            url.pathname = '/api/v3/import'; url.search = ''; url.hash = '';
+            return { url: url.toString(), permission: `${url.origin}/*` };
+          }
+          ''',
+              'const endpointInfo = TabDeckBridgeRuntime.endpointInfo;\n',
+          )
+
+          replace_once(
+              "extensions/firefox-android/popup.js",
+              '''async function getSourceSession() {
+            const key = 'tabdeckSourceSessionId';
+            const sessionArea = browser.storage.session;
+            const area = sessionArea || browser.storage.local;
+            const stored = await area.get({ [key]: '' });
+            if (stored[key]) return { id: stored[key], reliable: Boolean(sessionArea) };
+            const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            await area.set({ [key]: id });
+            return { id, reliable: Boolean(sessionArea) };
+          }
+
+          function endpointInfo(value) {
+            const url = new URL(value);
+            if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
+            const host = url.hostname.toLowerCase();
+            const ipv6 = host.replace(/^\\[|\\]$/g, '');
+            const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
+            if (!loopback) {
+              throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
+            }
+            if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
+            url.pathname = '/api/v3/import';
+            url.search = '';
+            url.hash = '';
+            return { url: url.toString(), permission: `${url.origin}/*` };
+          }
+          ''',
+              '''const sourceSessionStorage = {
+            reliable: Boolean(browser.storage.session),
+            get(defaults) {
+              return (browser.storage.session || browser.storage.local).get(defaults);
+            },
+            set(values) {
+              return (browser.storage.session || browser.storage.local).set(values);
+            }
+          };
+          const getSourceSession = () => TabDeckBridgeRuntime.getSourceSession(sourceSessionStorage);
+          const endpointInfo = TabDeckBridgeRuntime.endpointInfo;
+          ''',
+          )
+
+          for popup in ("extensions/chromium-desktop/popup.html", "extensions/firefox-android/popup.html"):
+              replace_once(
+                  popup,
+                  '  <script src="popup.js"></script>',
+                  '  <script src="bridge-runtime.js"></script>\n  <script src="popup.js"></script>',
+              )
+
+          replace_once(
+              "extensions/chromium-desktop/README.md",
+              "over a short-lived trusted-LAN bridge.",
+              "over a short-lived loopback bridge reached through an explicit ADB port forward.",
+          )
+          replace_once(
+              "extensions/chromium-desktop/README.md",
+              "- private-network endpoint validation",
+              "- loopback endpoint validation",
+          )
+          replace_once(
+              "docs/BRIDGE_PROTOCOL.md",
+              "requires explicit opt-in, authenticated TLS, peer/address allowlisting",
+              "requires explicit opt-in, TLS with peer authentication, peer/address allowlisting",
+          )
+
+          replace_once(
+              "app/build.gradle.kts",
+              '    testImplementation("junit:junit:4.13.2")\n',
+              '    testImplementation("junit:junit:4.13.2")\n    testImplementation("org.json:json:20251224")\n',
+          )
+
+          snapshot_test = '''package com.tabdeck.app.data
+
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class SnapshotJsonCodecTest {
+              @Test
+              fun decodeClassifiedCoversEveryOutcome() {
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified(
+                          """{"format":"tabdeck-backup","version":3,"tabs":[]}""",
+                      ) is SnapshotJsonCodec.DecodeResult.Success,
+                  )
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified(
+                          """{"format":"tabdeck-backup","version":99,"tabs":[]}""",
+                      ) is SnapshotJsonCodec.DecodeResult.Rejected,
+                  )
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified(
+                          """{"format":"other-app","version":3,"tabs":[]}""",
+                      ) is SnapshotJsonCodec.DecodeResult.Rejected,
+                  )
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified(
+                          """{"format":"tabdeck-backup","version":3}""",
+                      ) is SnapshotJsonCodec.DecodeResult.Rejected,
+                  )
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified(
+                          """{"format":"tabdeck-backup","version":3,"tabs":[}""",
+                      ) is SnapshotJsonCodec.DecodeResult.Rejected,
+                  )
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified("""{"hello":"world"}""") is
+                          SnapshotJsonCodec.DecodeResult.NotBackup,
+                  )
+                  assertTrue(
+                      SnapshotJsonCodec.decodeClassified("https://example.com") is
+                          SnapshotJsonCodec.DecodeResult.NotBackup,
+                  )
+              }
+          }
+          '''
+          write("app/src/test/java/com/tabdeck/app/data/SnapshotJsonCodecTest.kt", snapshot_test)
+
+          bridge_parser_test = '''package com.tabdeck.app.bridge
+
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class BridgePayloadParserTest {
+              private fun payload(identityVersion: String): String = """
+                  {
+                    "browser":"Chrome",
+                    "deviceName":"Pixel",
+                    "sourceSessionId":"session-1",
+                    $identityVersion
+                    "completeSnapshot":true,
+                    "tabs":[{"id":"tab-1","url":"https://example.com"}]
+                  }
+              """.trimIndent()
+
+              @Test
+              fun completeSnapshotRequiresIdentityVersionOne() {
+                  assertTrue(BridgePayloadParser.parse(payload("\\\"identityVersion\\\":1,")).completeSnapshot)
+                  assertFalse(BridgePayloadParser.parse(payload("\\\"identityVersion\\\":2,")).completeSnapshot)
+                  assertFalse(BridgePayloadParser.parse(payload("")).completeSnapshot)
+              }
+          }
+          '''
+          write("app/src/test/java/com/tabdeck/app/bridge/BridgePayloadParserTest.kt", bridge_parser_test)
+
+          budgets = {
+              "schemaVersion": 1,
+              "metrics": {
+                  "coldStartP95Ms": {"direction": "max", "threshold": 1200, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs", "method": "Macrobenchmark StartupTimingMetric, 10 cold iterations"},
+                  "scrollJankPercent": {"direction": "max", "threshold": 3.0, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs, dense list", "method": "Macrobenchmark FrameTimingMetric over 10 scroll journeys"},
+                  "searchFirstPageP95Ms": {"direction": "max", "threshold": 250, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs with mixed facets", "method": "Measured from query commit to first PagingData item, 30 runs"},
+                  "importPeakMemoryMiB": {"direction": "max", "threshold": 256, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000-tab JSON snapshot", "method": "Perfetto process RSS peak during import"},
+                  "importThroughputTabsPerSecond": {"direction": "min", "threshold": 1000, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000-tab JSON snapshot", "method": "Accepted tabs divided by parse+persist duration, median of 5"},
+                  "widgetRefreshP95Ms": {"direction": "max", "threshold": 250, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs", "method": "Glance update request to state publication, 30 runs"},
+              },
+              "ciPolicy": "Fail when any metric exceeds its fixed checked-in budget.",
+          }
+          write("tools/performance-budgets.json", json.dumps(budgets, indent=2) + "\n")
+
+          gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+          if "__pycache__/" not in gitignore:
+              gitignore += "\n# Python-generated artifacts\n__pycache__/\n*.py[cod]\n"
+              write(".gitignore", gitignore)
+
+          for generated in ROOT.glob("tools/**/__pycache__"):
+              if generated.is_dir():
+                  for child in generated.iterdir():
+                      child.unlink()
+                  generated.rmdir()
+          PY
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Verify remediated repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/sync_extension_runtime.py
+          python3 tools/check_version.py
+          bash tools/run_core_checks.sh
+          python3 tools/validate_project.py --report build-validation-report.txt
+          python3 tools/performance_budget.py --validate-config
+          pwsh -NoLogo -NoProfile -File ./desktop-link/Test-TabDeckLink.ps1
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
+
+      - name: Commit and push verified fixes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/review-remediation.yml
+          git rm -f --ignore-unmatch tools/__pycache__/versioning.cpython-312.pyc
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No remediation changes remained to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Address all PR review feedback and harden CI"
+          AUTH="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${AUTH}" push origin HEAD:codex/deep-improvement-plan
