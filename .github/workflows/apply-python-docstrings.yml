@@ -1,0 +1,67 @@
+name: Apply Python tooling docstrings
+
+on:
+  pull_request:
+    branches:
+      - codex/deep-improvement-plan
+    paths:
+      - .github/workflows/apply-python-docstrings.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-python-docstrings-pr6
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Document, verify, and publish Python tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out documentation source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: documentation-source
+          persist-credentials: false
+
+      - name: Check out PR 6 branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/deep-improvement-plan
+          fetch-depth: 0
+          path: target
+
+      - name: Add Python function docstrings
+        run: python3 documentation-source/tools/apply_python_docstrings.py target
+
+      - name: Verify documented Python tooling
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q tools
+          python3 tools/check_version.py
+          python3 tools/validate_project.py --report build-validation-report.txt
+          python3 tools/performance_budget.py --validate-config
+          rm -rf /tmp/tabdeck-docstring-package
+          python3 tools/package_release.py --output-dir /tmp/tabdeck-docstring-package
+          test -s /tmp/tabdeck-docstring-package/TabDeck-v1.0.0-release-manifest.json
+
+      - name: Commit and push verified documentation
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add tools/*.py build-validation-report.txt
+          if git diff --cached --quiet; then
+            echo 'No Python documentation changes remained.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Document Python tooling functions'
+          git push origin HEAD:codex/deep-improvement-plan
