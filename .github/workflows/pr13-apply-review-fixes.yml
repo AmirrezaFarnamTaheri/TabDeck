@@ -1,0 +1,48 @@
+name: Apply PR 13 review fixes
+
+on:
+  push:
+    branches:
+      - codex/guided-utility-v1.1
+
+permissions:
+  contents: write
+
+jobs:
+  apply-review-fixes:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          ref: codex/guided-utility-v1.1
+
+      - name: Apply verified review patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .github/pr13-review-fixes.patch.gz.b64 | gzip -dc > /tmp/pr13-review-fixes.patch
+          git apply --check --whitespace=error-all /tmp/pr13-review-fixes.patch
+          git apply --index --whitespace=error-all /tmp/pr13-review-fixes.patch
+          git rm .github/pr13-review-fixes.patch.gz.b64 .github/workflows/pr13-apply-review-fixes.yml
+
+      - name: Run focused validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_guided_utility.py
+          python3 tools/validate_project.py
+          python3 tools/check_version.py
+          bash tools/run_core_checks.sh
+          git diff --cached --check
+
+      - name: Publish clean review-fix commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Address PR review feedback"
+          git push origin HEAD:codex/guided-utility-v1.1
