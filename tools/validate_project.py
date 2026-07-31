@@ -246,8 +246,15 @@ def validate_product_version() -> None:
 
 
 def validate_extension_contracts() -> None:
+    canonical_runtime = (ROOT / "extensions/shared/bridge-runtime.js").read_text(encoding="utf-8")
     for folder in [ROOT / "extensions/firefox-android", ROOT / "extensions/chromium-desktop"]:
         manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+        generated_runtime = folder / "bridge-runtime.js"
+        if not generated_runtime.is_file() or generated_runtime.read_text(encoding="utf-8") != canonical_runtime:
+            fail(f"Generated bridge runtime is missing or stale in {folder.relative_to(ROOT)}")
+        popup_html = (folder / "popup.html").read_text(encoding="utf-8")
+        if popup_html.find('src="bridge-runtime.js"') < 0 or popup_html.find('src="bridge-runtime.js"') > popup_html.find('src="popup.js"'):
+            fail(f"Shared bridge runtime must load before popup.js in {folder.relative_to(ROOT)}")
         if manifest.get("manifest_version") not in {2, 3}:
             fail(f"Unsupported extension manifest version in {folder.relative_to(ROOT)}")
         popup = manifest.get("browser_action", manifest.get("action", {})).get("default_popup")
@@ -256,7 +263,7 @@ def validate_extension_contracts() -> None:
         for icon_path in manifest.get("icons", {}).values():
             if not (folder / icon_path).exists():
                 fail(f"Missing extension icon {icon_path} in {folder.relative_to(ROOT)}")
-    ok("Validated extension manifest file references")
+    ok("Validated extension manifests and synchronized bridge runtime")
 
 
 def validate_gradle_wrapper_files() -> None:
@@ -335,8 +342,8 @@ def validate_release_contracts() -> None:
     repository = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt").read_text(encoding="utf-8")
     view_model = (ROOT / "app/src/main/java/com/tabdeck/app/TabDeckViewModel.kt").read_text(encoding="utf-8")
     export_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabExportCodec.kt").read_text(encoding="utf-8")
-    snapshot_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt").read_text(encoding="utf-8")
     bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")
+    bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
     checks = {
         "bridge API v3": 'request.path == "/api/v3/import"' in bridge and '.put("version", 3)' in bridge,
         "bridge compatibility": all(f'/api/v{version}/import' in bridge for version in (1, 2, 3)),
@@ -351,9 +358,10 @@ def validate_release_contracts() -> None:
         "human-readable exports": all(token in export_codec for token in ("MARKDOWN", "CSV", "NETSCAPE_BOOKMARKS", "csvCell")),
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,
         "UTF-8 bounded share import": "fun utf8Prefix" in view_model and "MAX_IMPORT_DOCUMENT_BYTES" in view_model,
-        "typed backup classification": "sealed interface DecodeResult" in snapshot_codec and "decodeClassified" in view_model,
+        "typed backup classification": "sealed interface DecodeResult" in backup and "decodeClassified" in view_model,
         "loopback-only bridge": "LOOPBACK_ENDPOINT" in bridge_network and "0.0.0.0" not in bridge,
-        "session-scoped source identity": "SourceIdentity.encodeTabId" in (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8"),
+        "session-scoped source identity": "SourceIdentity.encodeTabId" in bridge_parser,
+        "identity-version reconciliation guard": "identityVersion == CURRENT_IDENTITY_VERSION" in bridge_parser,
     }
     for label, passed in checks.items():
         if not passed:

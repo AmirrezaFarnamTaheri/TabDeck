@@ -1,6 +1,6 @@
 # TabDeck Bridge — Chromium desktop
 
-A Manifest V3 desktop extension for Chrome, Chrome Beta/Dev/Canary, Brave, Opera, Edge, and Vivaldi. It is a companion capture path for desktop/synchronized sessions and can send native desktop tab-group metadata to Android TabDeck over a short-lived trusted-LAN bridge.
+A Manifest V3 desktop extension for Chrome, Chrome Beta/Dev/Canary, Brave, Opera, Edge, and Vivaldi. It is a companion capture path for desktop/synchronized sessions and can send native desktop tab-group metadata to Android TabDeck over a short-lived loopback bridge reached through an explicit ADB port forward.
 
 ## Features
 
@@ -9,7 +9,7 @@ A Manifest V3 desktop extension for Chrome, Chrome Beta/Dev/Canary, Brave, Opera
 - live tab/group/duplicate counts
 - normalized duplicate preview and explicit cleanup
 - source channel/device label
-- private-network endpoint validation
+- loopback endpoint validation
 - bridge health preflight with API version and session-expiry feedback
 - token persistence only after explicit opt-in
 

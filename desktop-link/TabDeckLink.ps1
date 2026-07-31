@@ -341,8 +341,10 @@ function Transfer-SelectedTabs {
     )
     if ($answer -ne 'Yes') { return }
     $opened = 0
+    $processed = 0
     $verified = [Collections.Generic.List[object]]::new()
     foreach ($tab in $selected) {
+        $processed++
         try {
             $encoded = [Uri]::EscapeDataString($tab.Url)
             $created = Invoke-JsonEndpoint "http://127.0.0.1:$port/json/new?$encoded" -Method PUT
@@ -352,9 +354,12 @@ function Transfer-SelectedTabs {
             }
             $opened++
             $verified.Add($tab)
-            if ($opened % 20 -eq 0) { Set-Status "Opening tabs: $opened/$($selected.Count)"; Pump-Ui }
             Start-Sleep -Milliseconds 120
         } catch { }
+        if ($processed % 10 -eq 0 -or $processed -eq $selected.Count) {
+            Set-Status "Processed tabs: $processed/$($selected.Count) ($opened opened)"
+            Pump-Ui
+        }
     }
     if ($CloseAfterTransfer.IsChecked) {
         foreach ($tab in ($verified | Where-Object Source -ne $destination)) {

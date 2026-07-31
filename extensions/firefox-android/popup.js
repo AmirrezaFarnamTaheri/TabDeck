@@ -19,32 +19,17 @@ async function fetchWithTimeout(url, options, timeoutMs = 20000) {
   finally { clearTimeout(timeout); }
 }
 
-async function getSourceSession() {
-  const key = 'tabdeckSourceSessionId';
-  const sessionArea = browser.storage.session;
-  const area = sessionArea || browser.storage.local;
-  const stored = await area.get({ [key]: '' });
-  if (stored[key]) return { id: stored[key], reliable: Boolean(sessionArea) };
-  const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  await area.set({ [key]: id });
-  return { id, reliable: Boolean(sessionArea) };
-}
-
-function endpointInfo(value) {
-  const url = new URL(value);
-  if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
-  const host = url.hostname.toLowerCase();
-  const ipv6 = host.replace(/^\[|\]$/g, '');
-  const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
-  if (!loopback) {
-    throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
+const sourceSessionStorage = {
+  reliable: Boolean(browser.storage.session),
+  get(defaults) {
+    return (browser.storage.session || browser.storage.local).get(defaults);
+  },
+  set(values) {
+    return (browser.storage.session || browser.storage.local).set(values);
   }
-  if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
-  url.pathname = '/api/v3/import';
-  url.search = '';
-  url.hash = '';
-  return { url: url.toString(), permission: `${url.origin}/*` };
-}
+};
+const getSourceSession = () => TabDeckBridgeRuntime.getSourceSession(sourceSessionStorage);
+const endpointInfo = TabDeckBridgeRuntime.endpointInfo;
 
 function normalized(raw, smart = true) {
   try {

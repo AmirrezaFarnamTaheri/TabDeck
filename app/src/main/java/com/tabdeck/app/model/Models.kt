@@ -147,8 +147,7 @@ enum class SyncMissingPolicy(val label: String, val description: String) {
 }
 
 enum class BridgeScope(val label: String, val available: Boolean) {
-    THIS_DEVICE("This device only (loopback)", true),
-    LOCAL_NETWORK("Local network (requires authenticated TLS; unavailable)", false),
+    THIS_DEVICE("This device only (loopback; fixed)", true),
 }
 
 enum class TransferPacing(val label: String, val delayMs: Long) {

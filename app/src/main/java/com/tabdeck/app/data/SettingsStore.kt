@@ -32,7 +32,6 @@ class SettingsStore(private val context: Context) {
         val legacySnapshot = stringPreferencesKey("snapshot_json_v1")
         val migratedV2 = booleanPreferencesKey("legacy_migrated_v2")
         val bridgeToken = stringPreferencesKey("bridge_token_v2")
-        val bridgeScope = stringPreferencesKey("bridge_scope")
         val bridgeSessionMinutes = intPreferencesKey("bridge_session_minutes")
         val onboardingComplete = booleanPreferencesKey("onboarding_complete")
         val autoCategorize = booleanPreferencesKey("auto_categorize")
@@ -119,8 +118,7 @@ class SettingsStore(private val context: Context) {
 
     private fun toSettings(prefs: Preferences): AppSettings = AppSettings(
         bridgeToken = prefs[Keys.bridgeToken].orEmpty().ifBlank { defaults.bridgeToken },
-        bridgeScope = enumOrDefault(prefs[Keys.bridgeScope], BridgeScope.THIS_DEVICE)
-            .takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE,
+        bridgeScope = BridgeScope.THIS_DEVICE,
         bridgeSessionMinutes = (prefs[Keys.bridgeSessionMinutes] ?: 20).coerceIn(5, 120),
         onboardingComplete = prefs[Keys.onboardingComplete] ?: false,
         autoCategorizeImports = prefs[Keys.autoCategorize] ?: true,
@@ -155,7 +153,6 @@ class SettingsStore(private val context: Context) {
 
     private fun writeSettings(prefs: androidx.datastore.preferences.core.MutablePreferences, value: AppSettings) {
         prefs[Keys.bridgeToken] = value.bridgeToken
-        prefs[Keys.bridgeScope] = value.bridgeScope.takeIf(BridgeScope::available)?.name ?: BridgeScope.THIS_DEVICE.name
         prefs[Keys.bridgeSessionMinutes] = value.bridgeSessionMinutes.coerceIn(5, 120)
         prefs[Keys.onboardingComplete] = value.onboardingComplete
         prefs[Keys.autoCategorize] = value.autoCategorizeImports

@@ -20,39 +20,25 @@ async function fetchWithTimeout(url, options, timeoutMs = 20000) {
 
 function storageGet(defaults) { return new Promise(resolve => chrome.storage.local.get(defaults, resolve)); }
 function storageSet(values) { return new Promise(resolve => chrome.storage.local.set(values, resolve)); }
-function sessionGet(defaults) {
-  const area = chrome.storage.session;
-  return area ? new Promise(resolve => area.get(defaults, resolve)) : storageGet(defaults);
-}
-function sessionSet(values) {
-  const area = chrome.storage.session;
-  return area ? new Promise(resolve => area.set(values, resolve)) : storageSet(values);
-}
-async function getSourceSession() {
-  const key = 'tabdeckSourceSessionId';
-  const stored = await sessionGet({ [key]: '' });
-  if (stored[key]) return { id: stored[key], reliable: Boolean(chrome.storage.session) };
-  const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  await sessionSet({ [key]: id });
-  return { id, reliable: Boolean(chrome.storage.session) };
-}
+const sourceSessionStorage = {
+  reliable: Boolean(chrome.storage.session),
+  get(defaults) {
+    const area = chrome.storage.session || chrome.storage.local;
+    return new Promise(resolve => area.get(defaults, resolve));
+  },
+  set(values) {
+    const area = chrome.storage.session || chrome.storage.local;
+    return new Promise(resolve => area.set(values, resolve));
+  }
+};
+const getSourceSession = () => TabDeckBridgeRuntime.getSourceSession(sourceSessionStorage);
 function tabsQuery(query) { return new Promise((resolve, reject) => chrome.tabs.query(query, tabs => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve(tabs))); }
 function groupGet(id) { return new Promise(resolve => chrome.tabGroups.get(id, group => chrome.runtime.lastError ? resolve(null) : resolve(group))); }
 function tabsRemove(ids) { return new Promise((resolve, reject) => chrome.tabs.remove(ids, () => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve())); }
 async function removeTabsChunked(ids) { for (let i = 0; i < ids.length; i += 200) await tabsRemove(ids.slice(i, i + 200)); }
 function permissionsRequest(origins) { return new Promise((resolve, reject) => chrome.permissions.request({ origins }, granted => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve(granted))); }
 
-function endpointInfo(value) {
-  const url = new URL(value);
-  if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
-  const host = url.hostname.toLowerCase();
-  const ipv6 = host.replace(/^\[|\]$/g, '');
-  const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
-  if (!loopback) throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
-  if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
-  url.pathname = '/api/v3/import'; url.search = ''; url.hash = '';
-  return { url: url.toString(), permission: `${url.origin}/*` };
-}
+const endpointInfo = TabDeckBridgeRuntime.endpointInfo;
 
 function normalized(raw, smart = true) {
   try {

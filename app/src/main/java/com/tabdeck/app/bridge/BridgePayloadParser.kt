@@ -29,6 +29,7 @@ object BridgePayloadParser {
             root.optString("sourceSessionId", root.optString("sessionId")),
             MAX_SOURCE_SESSION_ID_LENGTH,
         )
+        val identityVersion = root.optInt("identityVersion", 0)
         val sessionGroup = cleanText(root.optString("group"), 120)
         val capturedAt = safeTimestamp(root.optLong("capturedAt", now), now)
         val tabArray = root.optJSONArray("tabs") ?: JSONArray()
@@ -64,7 +65,8 @@ object BridgePayloadParser {
         }
 
         val requestedCompleteSnapshot = root.optBoolean("completeSnapshot", false)
-        val identityIsProvable = sourceBrowser.isLaunchTarget &&
+        val identityIsProvable = identityVersion == CURRENT_IDENTITY_VERSION &&
+            sourceBrowser.isLaunchTarget &&
             deviceName.isNotBlank() &&
             sourceSessionId.isNotBlank() &&
             parsed.all { tab ->
@@ -89,6 +91,7 @@ object BridgePayloadParser {
 
     private fun safeTimestamp(value: Long, now: Long): Long = value.coerceIn(MIN_REASONABLE_EPOCH_MS, now + MAX_FUTURE_SKEW_MS)
 
+    private const val CURRENT_IDENTITY_VERSION = 1
     private const val MAX_TABS_PER_IMPORT = 25_000
     private const val MAX_SOURCE_SESSION_ID_LENGTH = 256
     private const val MIN_REASONABLE_EPOCH_MS = 946_684_800_000L // 2000-01-01

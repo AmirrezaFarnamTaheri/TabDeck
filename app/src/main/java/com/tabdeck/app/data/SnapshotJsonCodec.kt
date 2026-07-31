@@ -138,8 +138,7 @@ object SnapshotJsonCodec {
 
     private fun settingsFromJson(value: JSONObject): AppSettings = AppSettings(
         bridgeToken = value.optString("bridgeToken").ifBlank { newBridgeToken() },
-        bridgeScope = enumOrDefault(value.optString("bridgeScope"), BridgeScope.THIS_DEVICE)
-            .takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE,
+        bridgeScope = BridgeScope.THIS_DEVICE,
         bridgeSessionMinutes = value.optInt("bridgeSessionMinutes", 20).coerceIn(5, 120),
         onboardingComplete = value.optBoolean("onboardingComplete", false),
         autoCategorizeImports = value.optBoolean("autoCategorizeImports", true),

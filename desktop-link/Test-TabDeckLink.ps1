@@ -14,7 +14,8 @@ $required = @(
     'function Test-DestinationTarget',
     'function Test-SupportedDevToolsSocket',
     'sourceSessionId = $script:SourceSessionId',
-    'Destination target was not observable after creation; source remains open.'
+    'Destination target was not observable after creation; source remains open.',
+    'Processed tabs: $processed/$($selected.Count) ($opened opened)'
 )
 foreach ($needle in $required) {
     if (-not $text.Contains($needle)) { $errors.Add("Missing safety contract: $needle") }

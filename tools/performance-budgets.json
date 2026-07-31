@@ -1,12 +1,48 @@
 {
   "schemaVersion": 1,
   "metrics": {
-    "coldStartP95Ms": {"direction": "max", "threshold": 1200, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs", "method": "Macrobenchmark StartupTimingMetric, 10 cold iterations"},
-    "scrollJankPercent": {"direction": "max", "threshold": 3.0, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs, dense list", "method": "Macrobenchmark FrameTimingMetric over 10 scroll journeys"},
-    "searchFirstPageP95Ms": {"direction": "max", "threshold": 250, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs with mixed facets", "method": "Measured from query commit to first PagingData item, 30 runs"},
-    "importPeakMemoryMiB": {"direction": "max", "threshold": 256, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000-tab JSON snapshot", "method": "Perfetto process RSS peak during import"},
-    "importThroughputTabsPerSecond": {"direction": "min", "threshold": 1000, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000-tab JSON snapshot", "method": "Accepted tabs divided by parse+persist duration, median of 5"},
-    "widgetRefreshP95Ms": {"direction": "max", "threshold": 250, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs", "method": "Glance update request to state publication, 30 runs"}
+    "coldStartP95Ms": {
+      "direction": "max",
+      "threshold": 1200,
+      "deviceClass": "Pixel 6 / API 36 or equivalent",
+      "dataset": "25,000 tabs",
+      "method": "Macrobenchmark StartupTimingMetric, 10 cold iterations"
+    },
+    "scrollJankPercent": {
+      "direction": "max",
+      "threshold": 3.0,
+      "deviceClass": "Pixel 6 / API 36 or equivalent",
+      "dataset": "25,000 tabs, dense list",
+      "method": "Macrobenchmark FrameTimingMetric over 10 scroll journeys"
+    },
+    "searchFirstPageP95Ms": {
+      "direction": "max",
+      "threshold": 250,
+      "deviceClass": "Pixel 6 / API 36 or equivalent",
+      "dataset": "25,000 tabs with mixed facets",
+      "method": "Measured from query commit to first PagingData item, 30 runs"
+    },
+    "importPeakMemoryMiB": {
+      "direction": "max",
+      "threshold": 256,
+      "deviceClass": "Pixel 6 / API 36 or equivalent",
+      "dataset": "25,000-tab JSON snapshot",
+      "method": "Perfetto process RSS peak during import"
+    },
+    "importThroughputTabsPerSecond": {
+      "direction": "min",
+      "threshold": 1000,
+      "deviceClass": "Pixel 6 / API 36 or equivalent",
+      "dataset": "25,000-tab JSON snapshot",
+      "method": "Accepted tabs divided by parse+persist duration, median of 5"
+    },
+    "widgetRefreshP95Ms": {
+      "direction": "max",
+      "threshold": 250,
+      "deviceClass": "Pixel 6 / API 36 or equivalent",
+      "dataset": "25,000 tabs",
+      "method": "Glance update request to state publication, 30 runs"
+    }
   },
-  "ciRegressionRule": "Fail when any metric exceeds its checked-in budget. Baseline comparison requires an explicitly approved baseline artifact and is not enforced until such an artifact exists."
+  "ciPolicy": "Fail when any metric exceeds its fixed checked-in budget."
 }

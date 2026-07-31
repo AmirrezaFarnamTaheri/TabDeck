@@ -10,7 +10,7 @@ Canonical endpoint:
 
 - same device or explicit ADB forward: `http://127.0.0.1:48721/api/v3/import`
 
-Direct LAN exposure is disabled. Private IP filtering and browser `Origin` checks are not peer authentication and do not provide transport confidentiality. Any future LAN mode requires explicit opt-in, authenticated TLS, peer/address allowlisting, certificate lifecycle management, and immediate token/peer revocation.
+Direct LAN exposure is disabled. Private IP filtering and browser `Origin` checks are not peer authentication and do not provide transport confidentiality. Any future LAN mode requires explicit opt-in, TLS with peer authentication, peer/address allowlisting, certificate lifecycle management, and immediate token/peer revocation.
 
 Compatibility routes `/api/v1/import` and `/api/v2/import` pass through the same current parser and validation boundary.
 
