@@ -13,53 +13,27 @@
       <div class="header-copy"><span class="eyebrow">DESKTOP COMPANION</span><h1>Session bridge</h1><p>Preserve native groups while sending tabs to Android.</p></div>
       <button id="refresh" class="icon-button" aria-label="Refresh preview" title="Refresh preview">↻</button>
     </header>
-
     <section class="stats">
       <article><strong id="tabCount">—</strong><span>Tabs</span></article>
       <article><strong id="groupCount">—</strong><span>Groups</span></article>
       <article><strong id="duplicateCount">—</strong><span>Duplicates</span></article>
     </section>
-
     <section class="panel">
       <div class="two-column">
         <label>Source browser
-          <select id="browser">
-            <option>Chrome</option><option>Chrome Beta</option><option>Chrome Dev</option><option>Chrome Canary</option>
-            <option>Brave</option><option>Brave Beta</option><option>Opera</option><option>Opera Beta</option>
-            <option>Microsoft Edge</option><option>Edge Beta</option><option>Vivaldi</option>
-          </select>
+          <select id="browser"><option>Chrome</option><option>Chrome Beta</option><option>Chrome Dev</option><option>Chrome Canary</option><option>Brave</option><option>Brave Beta</option><option>Opera</option><option>Opera Beta</option><option>Microsoft Edge</option><option>Edge Beta</option><option>Vivaldi</option></select>
         </label>
         <label>Device label<input id="deviceName" maxlength="120" placeholder="Work laptop"></label>
       </div>
-      <label>Capture scope
-        <select id="scope"><option value="all">All browser windows</option><option value="current">Current window only</option></select>
-      </label>
-      <div class="toggle-grid">
-        <label class="toggle"><input id="excludePinned" type="checkbox"><span><b>Protect pinned tabs</b><small>Exclude them from sends and cleanup</small></span></label>
-        <label class="toggle"><input id="stripTrackers" type="checkbox" checked><span><b>Smart duplicate matching</b><small>Ignore fragments and tracking parameters</small></span></label>
-      </div>
     </section>
-
     <details class="panel connection">
       <summary>Android bridge connection</summary>
-      <label>Phone endpoint<input id="endpoint" type="url" spellcheck="false" placeholder="http://192.168.1.20:48721/api/v3/import"></label>
+      <label>Phone endpoint<input id="endpoint" type="url" spellcheck="false" placeholder="http://127.0.0.1:48721/api/v3/import"></label>
       <label>Bridge token<input id="token" type="password" autocomplete="off" spellcheck="false"></label>
-      <label class="toggle"><input id="rememberToken" type="checkbox"><span><b>Remember token</b><small>Off by default; otherwise paste it for each capture session</small></span></label>
       <p>TabDeck accepts loopback only. Use an explicit ADB port forward to 127.0.0.1:48721, and stop the bridge after use.</p>
-      <div class="connection-actions">
-        <button id="testConnection" class="secondary-button" type="button">Test bridge</button>
-        <span>Checks reachability only; no tab data is sent.</span>
-      </div>
     </details>
-
-    <section id="duplicatePanel" class="duplicate-panel" hidden>
-      <div><b id="duplicateHeadline"></b><span>Cleanup is local to this desktop browser and requires confirmation.</span></div>
-      <button id="cleanup" class="danger-button">Close copies</button>
-    </section>
-
     <button id="send" class="primary-button">Send tabs + groups to Android</button>
     <p id="status" role="status" aria-live="polite">Reading browser session…</p>
-    <p class="privacy">TabDeck receives HTTP(S) URLs, titles, pin state, source tab IDs, window labels, and native group titles. Browser-internal pages are ignored.</p>
   </main>
   <script src="popup.js"></script>
 </body>
