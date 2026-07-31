@@ -13,6 +13,15 @@ object TabQueryBuilder {
     fun count(query: LibraryQuery, staleBefore: Long): SupportSQLiteQuery =
         build(query, staleBefore, countOnly = true, limit = null)
 
+    fun requireSupported(query: LibraryQuery) {
+        validateBindBudget(
+            query = query,
+            cleanTagCount = cleanTags(query).size,
+            searchTokenCount = searchTokens(query.search).size,
+            includeLimit = true,
+        )
+    }
+
     private fun build(
         query: LibraryQuery,
         staleBefore: Long,
@@ -22,6 +31,15 @@ object TabQueryBuilder {
         val sql = StringBuilder(if (countOnly) "SELECT COUNT(*) FROM tabs" else "SELECT * FROM tabs")
         val clauses = mutableListOf<String>()
         val args = mutableListOf<Any>()
+        val cleanTags = cleanTags(query)
+        val tokens = searchTokens(query.search)
+
+        validateBindBudget(
+            query = query,
+            cleanTagCount = cleanTags.size,
+            searchTokenCount = tokens.size,
+            includeLimit = !countOnly && limit != null && limit > 0,
+        )
 
         if (query.statuses.isNotEmpty()) {
             clauses += "status IN (${placeholders(query.statuses.size)})"
@@ -49,17 +67,11 @@ object TabQueryBuilder {
             clauses += "lastSeenAtEpochMs < ?"
             args += staleBefore
         }
-        query.tags.asSequence().map(String::trim).filter(String::isNotBlank).forEach { tag ->
+        cleanTags.forEach { tag ->
             clauses += "tagsJson LIKE ? ESCAPE '\\'"
             args += "%\"${escapeLike(tag)}\"%"
         }
 
-        val tokens = query.search.trim()
-            .split(Regex("\\s+"))
-            .asSequence()
-            .map { it.lowercase(Locale.ROOT) }
-            .filter(String::isNotBlank)
-            .toList()
         tokens.forEach { token ->
             val value = "%${escapeLike(token)}%"
             clauses += "(" + SEARCH_COLUMNS.joinToString(" OR ") { "LOWER($it) LIKE ? ESCAPE '\\'" } + ")"
@@ -95,10 +107,46 @@ object TabQueryBuilder {
 
     private fun placeholders(size: Int): String = List(size) { "?" }.joinToString(",")
 
+    private fun cleanTags(query: LibraryQuery): List<String> = query.tags.asSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .distinct()
+        .toList()
+
+    private fun searchTokens(search: String): List<String> = search.trim()
+        .split(Regex("\\s+"))
+        .asSequence()
+        .map { it.lowercase(Locale.ROOT) }
+        .filter(String::isNotBlank)
+        .distinct()
+        .toList()
+
+    private fun validateBindBudget(
+        query: LibraryQuery,
+        cleanTagCount: Int,
+        searchTokenCount: Int,
+        includeLimit: Boolean,
+    ) {
+        val required = query.statuses.size +
+            query.browsers.size +
+            query.groups.size +
+            query.sourceDevices.size +
+            query.sourceGroups.size +
+            cleanTagCount +
+            (if (query.staleOnly) 1 else 0) +
+            (searchTokenCount * SEARCH_COLUMNS.size) +
+            (if (includeLimit) 1 else 0)
+        require(required <= SQLITE_MAX_BIND_ARGUMENTS) {
+            "Query requires $required SQLite bind arguments; the supported maximum is $SQLITE_MAX_BIND_ARGUMENTS. " +
+                "Reduce the combined number of filters or unique search terms."
+        }
+    }
+
     private fun escapeLike(value: String): String = value
         .replace("\\", "\\\\")
         .replace("%", "\\%")
         .replace("_", "\\_")
 
     private val SEARCH_COLUMNS = listOf("title", "url", "host", "notes", "tagsJson", "sourceGroup", "assignedGroup")
+    private const val SQLITE_MAX_BIND_ARGUMENTS = 999
 }

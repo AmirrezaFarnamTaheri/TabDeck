@@ -24,6 +24,7 @@ query_builder = text("app/src/main/java/com/tabdeck/app/data/local/TabQueryBuild
 query_codec = text("app/src/main/java/com/tabdeck/app/data/local/LibraryQueryCodec.kt")
 regex_engine = text("app/src/main/java/com/tabdeck/app/engine/RegexCategorizer.kt")
 bridge_service = text("app/src/main/java/com/tabdeck/app/bridge/LocalBridgeService.kt")
+bridge_network = text("app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt")
 root = text("app/src/main/java/com/tabdeck/app/ui/TabDeckRoot.kt")
 screens = text("app/src/main/java/com/tabdeck/app/ui/Screens.kt")
 dialogs = text("app/src/main/java/com/tabdeck/app/ui/Dialogs.kt")
@@ -69,7 +70,17 @@ for forbidden in ("MAX_BACKUP_TABS", "MAX_BACKUP_RULES", "MAX_BACKUP_GROUPS", "M
 for forbidden in ("MAX_SEARCH_TOKENS", "MAX_TAG_FILTERS", "MAX_LIMIT"):
     require(forbidden not in query_builder, f"query builder still contains an arbitrary result/filter cap: {forbidden}")
 require("MAX_SET_ITEMS" not in query_codec, "saved views must preserve all selected filters")
-require("MAX_RULES" not in regex_engine and "MAX_PATTERN_LENGTH" not in regex_engine, "rule evaluation must not silently ignore later rules or patterns")
+require("MAX_RULES" not in regex_engine, "rule evaluation must not silently ignore later rules")
+require("MAX_PATTERN_LENGTH" in regex_engine, "rule validation must retain a bounded regex pattern size")
+require("SQLITE_MAX_BIND_ARGUMENTS" in query_builder and "requireSupported" in query_builder, "query construction must enforce SQLite's bind-argument boundary")
+require("TabQueryBuilder.requireSupported(sanitized)" in repository, "sanitized library queries must be validated before SQL generation")
+for cap in ("MAX_TAB_TITLE_CHARS", "MAX_NOTES_CHARS", "MAX_TAG_TEXT_BUDGET", "MAX_SOURCE_TAB_ID_CHARS"):
+    require(cap in repository, f"incoming tab rows must retain the persistence safety boundary: {cap}")
+require("MAX_SESSION_MINUTES = 6 * 60" in bridge_network, "bridge sessions must reflect Android's six-hour dataSync limit")
+require("coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES)" in bridge_service, "bridge service expiry must use the effective foreground-service bound")
+require("no preset ceiling" not in screens, "capture UI must not advertise an unbounded bridge duration")
+require("withContext(Dispatchers.Default)" in dialogs and "delay(200)" in dialogs, "large URL previews must be debounced off the main thread")
+require("priorityValue == null" in dialogs and "sortOrderValue == null" in dialogs, "numeric dialog fields must expose parse errors")
 
 for label in ('HOME("Home"', 'TABS("Tabs"', 'OPEN("Open"', 'CAPTURE("Capture"', 'SETTINGS("Settings"'):
     require(label in root, f"guided utility navigation is missing {label}")
@@ -84,5 +95,14 @@ for forbidden in ("MaxBridgeTabs", "MaxLiveActionTabs", "capped at", "Bridge imp
     require(forbidden not in desktop, f"desktop companion still contains an arbitrary cap: {forbidden}")
 require("Capture workspace" in desktop, "desktop companion must present a guided capture workspace")
 require("Send selected tabs" in desktop, "desktop companion must provide a direct capture action")
+require("visible tab(s) $verb" in desktop, "desktop selection status must use descriptive wording")
+require("were already accepted" in desktop, "desktop batch failures must retain partial progress")
+
+for manifest in (
+    text("extensions/chromium-desktop/manifest.json"),
+    text("extensions/firefox-android/manifest.json"),
+):
+    require("http://*/*" not in manifest, "extensions must not request public HTTP host access")
+    require("http://127.0.0.1:48721/*" in manifest, "extensions must request only the supported loopback bridge origin")
 
 print("Guided utility contract: PASS")

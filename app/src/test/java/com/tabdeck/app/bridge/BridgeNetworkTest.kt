@@ -10,4 +10,9 @@ class BridgeNetworkTest {
         assertEquals(listOf(BridgeNetwork.LOOPBACK_ENDPOINT), BridgeNetwork.endpoints())
         assertTrue(BridgeNetwork.endpoints().all { it.startsWith("http://127.0.0.1:") })
     }
+
+    @Test
+    fun bridgeSessionDoesNotExceedAndroidDataSyncRuntime() {
+        assertEquals(360, BridgeNetwork.MAX_SESSION_MINUTES)
+    }
 }

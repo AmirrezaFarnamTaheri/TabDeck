@@ -261,7 +261,8 @@ function Select-AllTabs {
     $targets = if ($SearchBox.Text.Trim()) { @($script:TabsView) } else { @($script:Tabs) }
     foreach ($tab in $targets) { $tab.Selected = $Selected }
     $Grid.Items.Refresh()
-    Set-Status "$($targets.Count) visible tab(s) marked $Selected."
+    $verb = if ($Selected) { 'selected' } else { 'cleared' }
+    Set-Status "$($targets.Count) visible tab(s) $verb."
     Update-Summary
 }
 
@@ -425,11 +426,18 @@ function Push-To-TabDeck {
             identityVersion = 1
             tabs = @($tabsBatch)
         }
-        $response = Invoke-JsonEndpoint "http://127.0.0.1:$script:BridgePort/api/v3/import" -Method POST -Headers $headers -Body $payload
-        $received += [int]$response.received
-        $imported += [int]$response.imported
-        Set-Status "Sending batch $batchNumber/$($batches.Count): $imported tabs accepted."
-        Pump-Ui
+        try {
+            $response = Invoke-JsonEndpoint "http://127.0.0.1:$script:BridgePort/api/v3/import" -Method POST -Headers $headers -Body $payload
+            $received += [int]$response.received
+            $imported += [int]$response.imported
+            Set-Status "Sending batch $batchNumber/$($batches.Count): $imported tabs accepted."
+            Pump-Ui
+        } catch {
+            $message = "Batch $batchNumber/$($batches.Count) failed after $imported of $received tab(s) were already accepted: $($_.Exception.Message)"
+            Set-Status $message
+            Update-Summary
+            throw $message
+        }
     }
     Set-Status "TabDeck accepted $imported of $received selected tabs."
     Update-Summary

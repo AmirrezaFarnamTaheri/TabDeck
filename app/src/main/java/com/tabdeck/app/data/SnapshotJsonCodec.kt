@@ -1,6 +1,7 @@
 package com.tabdeck.app.data
 
 import com.tabdeck.app.data.local.LibraryQueryCodec
+import com.tabdeck.app.bridge.BridgeNetwork
 import com.tabdeck.app.model.AccentStyle
 import com.tabdeck.app.model.AppSettings
 import com.tabdeck.app.model.AppSnapshot
@@ -138,7 +139,7 @@ object SnapshotJsonCodec {
     private fun settingsFromJson(value: JSONObject): AppSettings = AppSettings(
         bridgeToken = value.optString("bridgeToken").ifBlank { newBridgeToken() },
         bridgeScope = BridgeScope.THIS_DEVICE,
-        bridgeSessionMinutes = value.optInt("bridgeSessionMinutes", 20).coerceAtLeast(1),
+        bridgeSessionMinutes = value.optInt("bridgeSessionMinutes", 20).coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES),
         onboardingComplete = value.optBoolean("onboardingComplete", false),
         autoCategorizeImports = value.optBoolean("autoCategorizeImports", true),
         stripTrackingParameters = value.optBoolean("stripTrackingParameters", true),

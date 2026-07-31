@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.tabdeck.app.bridge.BridgeNetwork
 import com.tabdeck.app.model.AccentStyle
 import com.tabdeck.app.model.AppSettings
 import com.tabdeck.app.model.BridgeScope
@@ -118,7 +119,7 @@ class SettingsStore(private val context: Context) {
     private fun toSettings(prefs: Preferences): AppSettings = AppSettings(
         bridgeToken = prefs[Keys.bridgeToken].orEmpty().ifBlank { defaults.bridgeToken },
         bridgeScope = BridgeScope.THIS_DEVICE,
-        bridgeSessionMinutes = (prefs[Keys.bridgeSessionMinutes] ?: 20).coerceAtLeast(1),
+        bridgeSessionMinutes = (prefs[Keys.bridgeSessionMinutes] ?: 20).coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES),
         onboardingComplete = prefs[Keys.onboardingComplete] ?: false,
         autoCategorizeImports = prefs[Keys.autoCategorize] ?: true,
         stripTrackingParameters = prefs[Keys.stripTracking] ?: true,
@@ -151,7 +152,7 @@ class SettingsStore(private val context: Context) {
 
     private fun writeSettings(prefs: androidx.datastore.preferences.core.MutablePreferences, value: AppSettings) {
         prefs[Keys.bridgeToken] = value.bridgeToken
-        prefs[Keys.bridgeSessionMinutes] = value.bridgeSessionMinutes.coerceAtLeast(1)
+        prefs[Keys.bridgeSessionMinutes] = value.bridgeSessionMinutes.coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES)
         prefs[Keys.onboardingComplete] = value.onboardingComplete
         prefs[Keys.autoCategorize] = value.autoCategorizeImports
         prefs[Keys.stripTracking] = value.stripTrackingParameters

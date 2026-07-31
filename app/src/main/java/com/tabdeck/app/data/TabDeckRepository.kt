@@ -809,22 +809,19 @@ class TabDeckRepository(context: Context) {
         val maxFuture = now + MAX_FUTURE_CLOCK_SKEW_MS
         return tab.copy(
             url = cleanUrl,
-            title = tab.title.singleLine(),
-            sourceGroup = tab.sourceGroup.singleLine(),
-            assignedGroup = tab.assignedGroup.singleLine().ifBlank { "Inbox" },
-            notes = tab.notes.cleanMultiline(),
-            tags = tab.tags.asSequence()
-                .map { it.singleLine() }
-                .filter(String::isNotBlank)
-                .toCollection(linkedSetOf()),
+            title = tab.title.singleLine(MAX_TAB_TITLE_CHARS),
+            sourceGroup = tab.sourceGroup.singleLine(MAX_GROUP_LABEL_CHARS),
+            assignedGroup = tab.assignedGroup.singleLine(MAX_GROUP_LABEL_CHARS).ifBlank { "Inbox" },
+            notes = tab.notes.cleanMultiline(MAX_NOTES_CHARS),
+            tags = tab.tags.asSequence().boundedTags(),
             createdAtEpochMs = tab.createdAtEpochMs.coerceIn(0L, maxFuture),
             importedAtEpochMs = tab.importedAtEpochMs.coerceIn(0L, now),
             lastSeenAtEpochMs = tab.lastSeenAtEpochMs.coerceIn(0L, maxFuture),
             snoozedUntilEpochMs = tab.snoozedUntilEpochMs
                 ?.coerceAtLeast(now)
                 ?.takeIf { tab.status == TabStatus.SNOOZED },
-            sourceDevice = tab.sourceDevice.singleLine(),
-            sourceTabId = tab.sourceTabId.singleLine(),
+            sourceDevice = tab.sourceDevice.singleLine(MAX_SOURCE_DEVICE_CHARS),
+            sourceTabId = tab.sourceTabId.singleLine(MAX_SOURCE_TAB_ID_CHARS),
             transferCount = tab.transferCount.coerceAtLeast(0),
         )
     }
@@ -847,8 +844,12 @@ class TabDeckRepository(context: Context) {
                 result[previousIndex] = item.copy(
                     id = previous.id,
                     pinned = previous.pinned || item.pinned,
-                    notes = listOf(previous.notes, item.notes).filter(String::isNotBlank).distinct().joinToString("\n\n"),
-                    tags = previous.tags + item.tags,
+                    notes = listOf(previous.notes, item.notes)
+                        .filter(String::isNotBlank)
+                        .distinct()
+                        .joinToString("\n\n")
+                        .cleanMultiline(MAX_NOTES_CHARS),
+                    tags = (previous.tags.asSequence() + item.tags.asSequence()).boundedTags(),
                     createdAtEpochMs = minOf(previous.createdAtEpochMs, item.createdAtEpochMs),
                     importedAtEpochMs = minOf(previous.importedAtEpochMs, item.importedAtEpochMs),
                     lastSeenAtEpochMs = maxOf(previous.lastSeenAtEpochMs, item.lastSeenAtEpochMs),
@@ -858,13 +859,17 @@ class TabDeckRepository(context: Context) {
         return result
     }
 
-    private fun sanitizeQuery(query: LibraryQuery): LibraryQuery = query.copy(
-        search = query.search.singleLine(),
-        groups = query.groups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-        sourceDevices = query.sourceDevices.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-        sourceGroups = query.sourceGroups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-        tags = query.tags.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-    )
+    private fun sanitizeQuery(query: LibraryQuery): LibraryQuery {
+        val sanitized = query.copy(
+            search = query.search.singleLine(),
+            groups = query.groups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+            sourceDevices = query.sourceDevices.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+            sourceGroups = query.sourceGroups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+            tags = query.tags.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        )
+        TabQueryBuilder.requireSupported(sanitized)
+        return sanitized
+    }
 
     private fun staleBefore(settings: AppSettings): Long =
         System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.staleAfterDays.coerceAtLeast(1).toLong())
@@ -872,19 +877,44 @@ class TabDeckRepository(context: Context) {
     private fun Set<String>.chunkedIds(): List<Set<String>> =
         asSequence().chunked(SQLITE_IN_CHUNK).map { it.toSet() }.toList()
 
-    private fun String.singleLine(): String =
-        replace(Regex("""[\p{Cc}\p{Cf}]+"""), " ").replace(Regex("""\s+"""), " ").trim()
+    private fun Sequence<String>.boundedTags(): Set<String> {
+        val result = linkedSetOf<String>()
+        var remaining = MAX_TAG_TEXT_BUDGET
+        for (raw in this) {
+            val clean = raw.singleLine(MAX_TAG_CHARS)
+            if (clean.isBlank() || clean in result) continue
+            val storageCost = clean.length + 3
+            if (storageCost > remaining) break
+            result += clean
+            remaining -= storageCost
+        }
+        return result
+    }
 
-    private fun String.cleanMultiline(): String =
+    private fun String.singleLine(maxLength: Int = Int.MAX_VALUE): String =
+        replace(Regex("""[\p{Cc}\p{Cf}]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .take(maxLength)
+
+    private fun String.cleanMultiline(maxLength: Int = Int.MAX_VALUE): String =
         replace("\r\n", "\n")
             .replace('\r', '\n')
             .filter { it == '\n' || !it.isISOControl() }
             .trim()
+            .take(maxLength)
 
     companion object {
         private const val SQLITE_IN_CHUNK = 800
         private const val RULE_BATCH_SIZE = 500
         private const val MAX_FUTURE_CLOCK_SKEW_MS = 5 * 60_000L
+        private const val MAX_TAB_TITLE_CHARS = 4_096
+        private const val MAX_GROUP_LABEL_CHARS = 1_024
+        private const val MAX_NOTES_CHARS = 65_536
+        private const val MAX_TAG_CHARS = 1_024
+        private const val MAX_TAG_TEXT_BUDGET = 32_768
+        private const val MAX_SOURCE_DEVICE_CHARS = 1_024
+        private const val MAX_SOURCE_TAB_ID_CHARS = 2_048
 
         fun browserForPackage(packageName: String?): BrowserId =
             BrowserId.entries.firstOrNull { it.packageName == packageName } ?: BrowserId.UNKNOWN

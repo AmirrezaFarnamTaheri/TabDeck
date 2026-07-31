@@ -8,7 +8,7 @@ This is an Android platform boundary, not a missing permission. Use browser shar
 
 - Confirm the exact browser variant is installed and enabled.
 - Open **Capture** and refresh available open targets.
-- Some browsers can still receive a standard Android URL intent even if they are not among TabDeck's declared optimized targets.
+- Some browsers can receive a standard Android URL intent from Android Share or the system chooser even when TabDeck does not list them; TabDeck Open requires a declared destination package.
 - Work-profile or secondary-user installations may not be visible to the current profile.
 
 ## Transfer opens only some tabs

@@ -557,7 +557,9 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun setBridgeScope(value: BridgeScope) = updateSettings {
         it.copy(bridgeScope = value.takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE)
     }
-    fun setBridgeSessionMinutes(value: Int) = updateSettings { it.copy(bridgeSessionMinutes = value.coerceAtLeast(1)) }
+    fun setBridgeSessionMinutes(value: Int) = updateSettings {
+        it.copy(bridgeSessionMinutes = value.coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES))
+    }
     fun setTransferPacing(value: TransferPacing) = updateSettings { it.copy(transferPacing = value) }
     fun setViewDensity(value: ViewDensity) = updateSettings { it.copy(viewDensity = value) }
     fun setLibraryLayout(value: LibraryLayout) = updateSettings { it.copy(libraryLayout = value) }

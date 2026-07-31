@@ -137,6 +137,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import com.tabdeck.app.TabDeckViewModel
+import com.tabdeck.app.bridge.BridgeNetwork
 import com.tabdeck.app.engine.UrlNormalizer
 import com.tabdeck.app.model.AccentStyle
 import com.tabdeck.app.model.BridgeScope
@@ -955,14 +956,19 @@ fun CaptureScreen(
                         value = bridgeMinutesText,
                         onValueChange = { value -> bridgeMinutesText = value.filter(Char::isDigit) },
                         label = { Text("Minutes") },
-                        supportingText = { Text("Any positive duration; no preset ceiling") },
+                        supportingText = { Text("1–${BridgeNetwork.MAX_SESSION_MINUTES} minutes; Android limits data-sync foreground services to 6 hours") },
                         singleLine = true,
                         enabled = !state.bridgeSession.enabled,
                         modifier = Modifier.weight(1f),
                     )
                     OutlinedButton(
-                        onClick = { bridgeMinutesText.toIntOrNull()?.takeIf { it > 0 }?.let(viewModel::setBridgeSessionMinutes) },
-                        enabled = !state.bridgeSession.enabled && (bridgeMinutesText.toIntOrNull() ?: 0) > 0,
+                        onClick = {
+                            bridgeMinutesText.toIntOrNull()
+                                ?.takeIf { it in 1..BridgeNetwork.MAX_SESSION_MINUTES }
+                                ?.let(viewModel::setBridgeSessionMinutes)
+                        },
+                        enabled = !state.bridgeSession.enabled &&
+                            (bridgeMinutesText.toIntOrNull() ?: 0) in 1..BridgeNetwork.MAX_SESSION_MINUTES,
                     ) { Text("Apply") }
                 }
                 KeyValueRow("Accepted", state.bridgeSession.acceptedRequests.toString())

@@ -8,6 +8,8 @@ import com.tabdeck.app.model.TabItem
 
 /** Linear-time regular-expression categorization backed by RE2/J. */
 object RegexCategorizer {
+    private const val MAX_PATTERN_LENGTH = 4_096
+
     data class RuleValidation(val valid: Boolean, val error: String = "")
     data class CompiledRule(val rule: RegexRule, val pattern: Pattern)
 
@@ -15,6 +17,9 @@ object RegexCategorizer {
         if (rule.name.isBlank()) return RuleValidation(false, "Rule name is required")
         if (rule.destinationGroup.isBlank()) return RuleValidation(false, "Destination group is required")
         if (rule.pattern.isBlank()) return RuleValidation(false, "Pattern is required")
+        if (rule.pattern.length > MAX_PATTERN_LENGTH) {
+            return RuleValidation(false, "Pattern exceeds $MAX_PATTERN_LENGTH characters")
+        }
         return try {
             compile(rule)
             RuleValidation(true)
@@ -64,6 +69,7 @@ object RegexCategorizer {
     }
 
     private fun compile(rule: RegexRule): Pattern {
+        require(rule.pattern.length <= MAX_PATTERN_LENGTH) { "Pattern exceeds $MAX_PATTERN_LENGTH characters" }
         val flags = if (rule.ignoreCase) Pattern.CASE_INSENSITIVE else 0
         return Pattern.compile(rule.pattern, flags)
     }

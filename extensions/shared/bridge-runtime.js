@@ -3,10 +3,9 @@
   function endpointInfo(value) {
     const url = new URL(value);
     if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
-    const host = url.hostname.toLowerCase();
-    const ipv6 = host.replace(/^\[|\]$/g, '');
-    const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
-    if (!loopback) throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
+    if (url.hostname !== '127.0.0.1' || url.port !== '48721') {
+      throw new Error('Use the supported loopback bridge endpoint at http://127.0.0.1:48721.');
+    }
     if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
     url.pathname = '/api/v3/import';
     url.search = '';

@@ -41,4 +41,15 @@ class RegexCategorizerTest {
         assertEquals("Found", result.assignedGroup)
     }
 
+    @Test
+    fun rejectsOversizedPatternsWithoutLimitingRuleCount() {
+        val oversized = RegexRule(
+            name = "Oversized",
+            pattern = "a".repeat(4_097),
+            destinationGroup = "Rejected",
+        )
+
+        assertFalse(RegexCategorizer.validate(oversized).valid)
+    }
+
 }

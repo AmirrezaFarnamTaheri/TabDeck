@@ -45,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,13 +72,25 @@ import com.tabdeck.app.model.TabStatus
 import com.tabdeck.app.model.TagEditMode
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit, onChooseFile: () -> Unit) {
     var text by remember { mutableStateOf("") }
-    val detected = remember(text) { UrlExtractor.extract(text) }
-    val normalizedKeys = remember(detected) { detected.map(UrlNormalizer::normalized) }
-    val duplicateCopies = remember(normalizedKeys) { normalizedKeys.size - normalizedKeys.distinct().size }
+    var detected by remember { mutableStateOf<List<String>>(emptyList()) }
+    var duplicateCopies by remember { mutableIntStateOf(0) }
+    LaunchedEffect(text) {
+        delay(200)
+        val (urls, duplicates) = withContext(Dispatchers.Default) {
+            val extracted = UrlExtractor.extract(text)
+            val normalizedKeys = extracted.map(UrlNormalizer::normalized)
+            extracted to (normalizedKeys.size - normalizedKeys.distinct().size)
+        }
+        detected = urls
+        duplicateCopies = duplicates
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bring tabs into the control deck") },
@@ -359,13 +372,14 @@ fun RuleDialog(existing: RegexRule?, groups: List<String>, onDismiss: () -> Unit
     var enabled by remember(existing?.id) { mutableStateOf(existing?.enabled ?: true) }
     var destinationMenu by remember { mutableStateOf(false) }
     var targetMenu by remember { mutableStateOf(false) }
+    val priorityValue = priority.toIntOrNull()
     val candidate = RegexRule(
         id = existing?.id ?: java.util.UUID.randomUUID().toString(),
         name = name.trim(),
         pattern = pattern,
         target = target,
         destinationGroup = destination.trim(),
-        priority = priority.toIntOrNull() ?: 100,
+        priority = priorityValue ?: existing?.priority ?: 100,
         enabled = enabled,
         ignoreCase = ignoreCase,
         addTags = tags.split(',').map(String::trim).filter(String::isNotBlank).toSet(),
@@ -395,14 +409,37 @@ fun RuleDialog(existing: RegexRule?, groups: List<String>, onDismiss: () -> Unit
                         }
                     }
                 }
-                item { OutlinedTextField(priority, { priority = it.filter { ch -> ch.isDigit() || ch == '-' } }, label = { Text("Priority (lower runs first)") }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    OutlinedTextField(
+                        value = priority,
+                        onValueChange = { value ->
+                            val digits = value.filter(Char::isDigit)
+                            priority = if (value.startsWith('-')) "-$digits" else digits
+                        },
+                        label = { Text("Priority (lower runs first)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = priorityValue == null,
+                        supportingText = {
+                            if (priorityValue == null) Text("Enter a whole number from -2147483648 to 2147483647")
+                        },
+                    )
+                }
                 item { OutlinedTextField(tags, { tags = it }, label = { Text("Tags to add") }, modifier = Modifier.fillMaxWidth()) }
                 item { SwitchLine("Enabled", enabled) { enabled = it } }
                 item { SwitchLine("Ignore case", ignoreCase) { ignoreCase = it } }
                 item { SwitchLine("Stop after this rule matches", stopAfterMatch) { stopAfterMatch = it } }
             }
         },
-        confirmButton = { Button(onClick = { onSave(candidate); onDismiss() }, enabled = validation.valid && name.isNotBlank() && destination.isNotBlank()) { Text("Save rule") } },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsedPriority = priorityValue ?: return@Button
+                    onSave(candidate.copy(priority = parsedPriority))
+                    onDismiss()
+                },
+                enabled = priorityValue != null && validation.valid && name.isNotBlank() && destination.isNotBlank(),
+            ) { Text("Save rule") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -413,6 +450,7 @@ fun GroupDialog(existing: GroupDefinition?, onDismiss: () -> Unit, onSave: (Grou
     var color by remember(existing?.id) { mutableStateOf(existing?.colorKey ?: "indigo") }
     var icon by remember(existing?.id) { mutableStateOf(existing?.iconKey ?: "folder") }
     var sortOrder by remember(existing?.id) { mutableStateOf((existing?.sortOrder ?: 100).toString()) }
+    val sortOrderValue = sortOrder.toIntOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (existing == null) "Create group" else "Edit group") },
@@ -421,26 +459,39 @@ fun GroupDialog(existing: GroupDefinition?, onDismiss: () -> Unit, onSave: (Grou
                 OutlinedTextField(name, { name = it }, label = { Text("Group name") }, modifier = Modifier.fillMaxWidth(), enabled = existing?.isSystem != true)
                 OutlinedTextField(color, { color = it }, label = { Text("Color key") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(icon, { icon = it }, label = { Text("Icon key") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(sortOrder, { sortOrder = it.filter(Char::isDigit) }, label = { Text("Sort order") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = sortOrder,
+                    onValueChange = { value ->
+                        val digits = value.filter(Char::isDigit)
+                        sortOrder = if (value.startsWith('-')) "-$digits" else digits
+                    },
+                    label = { Text("Sort order") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = sortOrderValue == null,
+                    supportingText = {
+                        if (sortOrderValue == null) Text("Enter a whole number from -2147483648 to 2147483647")
+                    },
+                )
                 if (existing?.isSystem == true) Text("The Inbox name is protected, but its visual metadata can be changed.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
             Button(
                 onClick = {
+                    val parsedSortOrder = sortOrderValue ?: return@Button
                     onSave(
                         GroupDefinition(
                             id = existing?.id ?: java.util.UUID.randomUUID().toString(),
                             name = name.trim(),
                             colorKey = color.trim().ifBlank { "indigo" },
                             iconKey = icon.trim().ifBlank { "folder" },
-                            sortOrder = sortOrder.toIntOrNull() ?: 100,
+                            sortOrder = parsedSortOrder,
                             isSystem = existing?.isSystem ?: false,
                         ),
                     )
                     onDismiss()
                 },
-                enabled = name.isNotBlank(),
+                enabled = name.isNotBlank() && sortOrderValue != null,
             ) { Text("Save group") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
