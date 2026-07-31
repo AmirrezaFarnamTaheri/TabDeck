@@ -12,8 +12,9 @@ python3 tools/check_version.py
 bash tools/run_core_checks.sh
 python3 tools/validate_project.py --report build-validation-report.txt
 python3 tools/validate_simple_release.py
+python3 tools/validate_connector_dom.py
 python3 tools/performance_budget.py --validate-config
-./gradlew --no-daemon test lintDebug assembleDebug
+./gradlew --no-daemon clean test lintDebug assembleDebug
 ```
 
 On Windows also run:
@@ -21,6 +22,8 @@ On Windows also run:
 ```powershell
 pwsh -NoLogo -NoProfile -File .\desktop-link\Test-TabDeckLink.ps1
 ```
+
+Pull-request CI additionally materializes the public community key, builds the minified release APK, verifies its alignment and certificate, packages it with all connectors and branding, and checks every release checksum.
 
 ## Release model
 
@@ -38,16 +41,10 @@ Trust a build by checking all of the following:
 ## Create a release
 
 1. Update `version.properties`, `CHANGELOG.md`, and `docs/RELEASE_NOTES.md`.
-2. Run the local verification commands.
-3. Merge the verified changes to `main`.
-4. Push an annotated tag matching the version:
+2. Run the verification commands and merge the green pull request into `main`.
+3. The **Release** workflow derives `v<VERSION_NAME>`, creates or verifies that tag at the merged commit, builds and verifies the community APK, and publishes the GitHub Release automatically.
 
-```bash
-git tag -a v1.0.0 -m "TabDeck v1.0.0"
-git push origin v1.0.0
-```
-
-Alternatively, run the **Release** workflow manually and provide the version tag. If the tag does not exist, the workflow creates it at the dispatched commit.
+Manual dispatch remains available for recovery or a deliberate rerun. Supply the exact version tag; the workflow fails if an existing tag points at a different commit.
 
 ## Published assets
 
@@ -64,4 +61,4 @@ Alternatively, run the **Release** workflow manually and provide the version tag
 
 ## Rollback
 
-Do not replace an existing tag with different code. Correct the defect, increment `VERSION_CODE`, choose a new semantic version, and publish a new tag. Remove an unsafe APK from the release page only when necessary, and document the withdrawal without rewriting repository history.
+Do not replace an existing tag with different code. Correct the defect, increment `VERSION_CODE`, choose a new semantic version, and merge a new release commit. Remove an unsafe APK from the release page only when necessary, and document the withdrawal without rewriting repository history.
