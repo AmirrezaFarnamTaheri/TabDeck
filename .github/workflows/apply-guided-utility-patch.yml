@@ -42,7 +42,9 @@ jobs:
           printf '%s  %s\n' 'b048b3a6e0b3ccab4f726f62a144544bd41970e62c8c6aafc52687774d1730a4' '/tmp/tabdeck-guided.patch.gz.b64' | sha256sum -c -
           base64 --decode /tmp/tabdeck-guided.patch.gz.b64 | gzip -d > /tmp/tabdeck-guided.patch
           printf '%s  %s\n' 'd651151f48d7d96aee72e109a8ea6e965c3a909da0100fb7dea141bb97617258' '/tmp/tabdeck-guided.patch' | sha256sum -c -
-          git apply --index --whitespace=error /tmp/tabdeck-guided.patch
+          git apply --index --whitespace=error --exclude=build-validation-report.txt /tmp/tabdeck-guided.patch
+          python3 tools/validate_project.py --report build-validation-report.txt
+          git add build-validation-report.txt
           git rm .github/tabdeck-guided.patch.part-* .github/tabdeck-guided.patch.ready .github/workflows/apply-guided-utility-patch.yml
           git config user.name 'TabDeck Automation'
           git config user.email 'actions@users.noreply.github.com'
