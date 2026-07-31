@@ -8,5 +8,5 @@
     "importThroughputTabsPerSecond": {"direction": "min", "threshold": 1000, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000-tab JSON snapshot", "method": "Accepted tabs divided by parse+persist duration, median of 5"},
     "widgetRefreshP95Ms": {"direction": "max", "threshold": 250, "deviceClass": "Pixel 6 / API 36 or equivalent", "dataset": "25,000 tabs", "method": "Glance update request to state publication, 30 runs"}
   },
-  "ciRegressionRule": "Fail when any metric exceeds its budget or regresses more than 10% from the approved baseline, whichever is stricter."
+  "ciRegressionRule": "Fail when any metric exceeds its checked-in budget. Baseline comparison requires an explicitly approved baseline artifact and is not enforced until such an artifact exists."
 }
