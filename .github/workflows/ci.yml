@@ -74,6 +74,13 @@ jobs:
       - name: Run static project validation
         run: python3 tools/validate_project.py --report build-validation-report.txt
 
+      - name: Validate performance budgets
+        run: python3 tools/performance_budget.py --validate-config
+
+      - name: Validate Windows Desktop Link contracts
+        shell: pwsh
+        run: ./desktop-link/Test-TabDeckLink.ps1
+
       - name: Test, lint, and assemble
         run: ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
 
