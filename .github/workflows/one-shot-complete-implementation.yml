@@ -1,0 +1,142 @@
+name: One-shot complete implementation
+
+on:
+  push:
+    branches:
+      - codex/deep-improvement-plan
+    paths:
+      - .github/workflows/one-shot-complete-implementation.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tabdeck-complete-implementation
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: "17"
+  ANDROID_API: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+
+jobs:
+  implement-and-verify:
+    name: Apply, verify, and commit complete implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/deep-improvement-plan
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Prove pre-implementation gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -f app/src/main/java/com/tabdeck/app/data/BackupInputClassifier.kt
+          test ! -f app/src/main/java/com/tabdeck/app/engine/SourceIdentity.kt
+          ! grep -q 'sealed interface DecodeResult' app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt
+          ! grep -q 'sourceSessionId' app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt
+
+      - name: Reconstruct and verify implementation payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .tabdeck-implementation/patch-*.b64 | base64 --decode > "${RUNNER_TEMP}/tabdeck-complete.patch.gz"
+          echo "301e6687d39ffb9f415d31ab1ab336f8c24163cc2c0fa132737ef76998495d1a  ${RUNNER_TEMP}/tabdeck-complete.patch.gz" | sha256sum -c -
+          gzip -dc "${RUNNER_TEMP}/tabdeck-complete.patch.gz" > "${RUNNER_TEMP}/tabdeck-complete.patch"
+          test -s "${RUNNER_TEMP}/tabdeck-complete.patch"
+
+      - name: Apply implementation atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            README.md \
+            app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt \
+            app/src/main/java/com/tabdeck/app/engine/SourceIdentity.kt \
+            app/src/test/java/com/tabdeck/app/engine/SourceIdentityTest.kt \
+            extensions/chromium-desktop/popup.js \
+            extensions/firefox-android/popup.js \
+            tools/CoreChecks.kt \
+            tools/run_core_checks.sh \
+            docs/ARCHITECTURE.md \
+            docs/BRIDGE_PROTOCOL.md
+          git apply --check "${RUNNER_TEMP}/tabdeck-complete.patch"
+          git apply "${RUNNER_TEMP}/tabdeck-complete.patch"
+          rm -rf .tabdeck-implementation
+          git diff --check
+
+      - name: Verify synchronized versions and executable contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/check_version.py
+          bash tools/run_core_checks.sh
+          python3 tools/performance_budget.py --validate-config
+          python3 tools/validate_project.py --report build-validation-report.txt
+          node --check extensions/chromium-desktop/popup.js
+          node --check extensions/firefox-android/popup.js
+
+      - name: Validate Windows Desktop Link contracts
+        shell: pwsh
+        run: ./desktop-link/Test-TabDeckLink.ps1
+
+      - name: Test, lint, and assemble Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "Implement TabDeck reliability, trust, and release contracts"
+          git push origin HEAD:codex/deep-improvement-plan
+
+      - name: Upload implementation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TabDeck-complete-implementation-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/reports/**
+            app/build/test-results/**
+            build-validation-report.txt
