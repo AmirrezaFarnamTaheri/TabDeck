@@ -74,6 +74,9 @@ jobs:
       - name: Run static project validation
         run: python3 tools/validate_project.py --report build-validation-report.txt
 
+      - name: Validate secretless release and branding
+        run: python3 tools/validate_simple_release.py
+
       - name: Validate performance budgets
         run: python3 tools/performance_budget.py --validate-config
 
