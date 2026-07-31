@@ -18,6 +18,7 @@ EXTENSION_MANIFESTS = [
 
 
 def check(tag: str | None) -> list[str]:
+    """Record a version-contract failure when the condition is false."""
     version = load_version()
     errors: list[str] = []
 
@@ -55,6 +56,7 @@ def check(tag: str | None) -> list[str]:
 
 
 def sync_extensions() -> None:
+    """Synchronize extension manifest versions with the product version."""
     version = load_version()
     for path in EXTENSION_MANIFESTS:
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -63,6 +65,7 @@ def sync_extensions() -> None:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its exit status."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", help="Require an exact v<VERSION_NAME> release tag")
     parser.add_argument("--sync-extensions", action="store_true", help="Set both extension manifest versions")

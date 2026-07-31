@@ -28,22 +28,27 @@ CHECKS: list[str] = []
 
 
 def fail(message: str) -> None:
+    """Record a validation failure for the final project report."""
     ERRORS.append(message)
 
 
 def warn(message: str) -> None:
+    """Record a validation warning for the final project report."""
     WARNINGS.append(message)
 
 
 def ok(message: str) -> None:
+    """Record a successful validation check for the final project report."""
     CHECKS.append(message)
 
 
 def run(command: list[str], cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
+    """Run a repository command and capture its output without raising automatically."""
     return subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
 
 
 def files(patterns: Iterable[str]) -> list[Path]:
+    """Collect matching repository files while excluding generated directories."""
     found: set[Path] = set()
     for pattern in patterns:
         found.update(ROOT.rglob(pattern))
@@ -51,6 +56,7 @@ def files(patterns: Iterable[str]) -> list[Path]:
 
 
 def validate_xml() -> None:
+    """Parse all repository XML files and report malformed documents."""
     xml_files = files(["*.xml"])
     for path in xml_files:
         try:
@@ -61,6 +67,7 @@ def validate_xml() -> None:
 
 
 def validate_json() -> None:
+    """Parse all repository JSON files and report malformed documents."""
     json_files = files(["*.json"])
     for path in json_files:
         try:
@@ -72,10 +79,12 @@ def validate_json() -> None:
 
 class StrictHtmlParser(HTMLParser):
     def error(self, message: str) -> None:  # pragma: no cover - required by older Python
+        """Raise an HTML parsing error for compatibility with older Python versions."""
         raise ValueError(message)
 
 
 def validate_html() -> None:
+    """Parse all repository HTML files with the strict parser."""
     html_files = files(["*.html"])
     for path in html_files:
         parser = StrictHtmlParser(convert_charrefs=True)
@@ -88,6 +97,7 @@ def validate_html() -> None:
 
 
 def validate_javascript() -> None:
+    """Check JavaScript syntax with Node when it is available."""
     js_files = files(["*.js"])
     node = shutil.which("node")
     if not node:
@@ -101,6 +111,7 @@ def validate_javascript() -> None:
 
 
 def validate_shell() -> None:
+    """Check shell-script syntax with the system shell when available."""
     scripts = files(["*.sh"])
     shell = shutil.which("sh")
     if not shell:
@@ -114,6 +125,7 @@ def validate_shell() -> None:
 
 
 def validate_embedded_xaml() -> None:
+    """Parse XAML documents embedded in PowerShell here-strings."""
     ps_files = files(["*.ps1"])
     xaml_count = 0
     for path in ps_files:
@@ -132,6 +144,7 @@ def validate_embedded_xaml() -> None:
 
 def strip_kotlin_comments_and_strings(text: str) -> str:
     # Preserve line count while removing lexical regions that make delimiter checks noisy.
+    """Remove Kotlin lexical regions while preserving line counts."""
     pattern = re.compile(
         r'/\*.*?\*/|//[^\n]*|""".*?"""|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'',
         flags=re.DOTALL | re.MULTILINE,
@@ -140,6 +153,7 @@ def strip_kotlin_comments_and_strings(text: str) -> str:
 
 
 def balanced_delimiters(text: str, pairs: dict[str, str]) -> tuple[bool, str]:
+    """Check balanced delimiters and return failure location details."""
     reverse = {v: k for k, v in pairs.items()}
     stack: list[tuple[str, int]] = []
     for index, char in enumerate(text):
@@ -156,6 +170,7 @@ def balanced_delimiters(text: str, pairs: dict[str, str]) -> tuple[bool, str]:
 
 
 def validate_kotlin_structure() -> None:
+    """Check Kotlin and Gradle source structure for corruption."""
     kt_files = files(["*.kt", "*.kts"])
     for path in kt_files:
         raw = path.read_text(encoding="utf-8")
@@ -181,6 +196,7 @@ def validate_kotlin_structure() -> None:
 
 
 def validate_powershell_structure() -> None:
+    """Parse PowerShell files when a compatible runtime is available."""
     ps_files = files(["*.ps1"])
     pwsh = shutil.which("pwsh") or shutil.which("powershell")
     if pwsh:
@@ -200,6 +216,7 @@ def validate_powershell_structure() -> None:
 
 
 def validate_manifest_contracts() -> None:
+    """Validate Android manifest privacy and browser-discovery contracts."""
     android_manifest = ROOT / "app/src/main/AndroidManifest.xml"
     tree = ET.parse(android_manifest)
     root = tree.getroot()
@@ -234,6 +251,7 @@ def validate_manifest_contracts() -> None:
 
 
 def validate_product_version() -> None:
+    """Validate the authoritative product version and synchronized consumers."""
     try:
         version = load_version()
     except (OSError, ValueError) as exc:
@@ -247,6 +265,7 @@ def validate_product_version() -> None:
 
 
 def validate_extension_contracts() -> None:
+    """Validate extension manifests and synchronized shared runtime files."""
     canonical_runtime = (ROOT / "extensions/shared/bridge-runtime.js").read_text(encoding="utf-8")
     for folder in [ROOT / "extensions/firefox-android", ROOT / "extensions/chromium-desktop"]:
         manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
@@ -268,6 +287,7 @@ def validate_extension_contracts() -> None:
 
 
 def validate_gradle_wrapper_files() -> None:
+    """Validate the committed Gradle wrapper artifacts."""
     wrapper_jar = ROOT / "gradle/wrapper/gradle-wrapper.jar"
     if not wrapper_jar.is_file() or wrapper_jar.stat().st_size < 10_000:
         fail("Gradle wrapper JAR is missing or implausibly small")
@@ -276,6 +296,7 @@ def validate_gradle_wrapper_files() -> None:
 
 
 def validate_build_coordinates() -> None:
+    """Validate pinned build-tool and dependency coordinates."""
     root_build = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
     app_build = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
     wrapper = (ROOT / "gradle/wrapper/gradle-wrapper.properties").read_text(encoding="utf-8")
@@ -300,6 +321,7 @@ def validate_build_coordinates() -> None:
 
 
 def validate_text_integrity() -> None:
+    """Validate UTF-8 encoding and reject unexpected control bytes."""
     candidates = files(["*.kt", "*.kts", "*.js", "*.json", "*.xml", "*.html", "*.ps1", "*.sh", "*.md", "*.yml", "*.yaml", "*.properties"])
     for path in candidates:
         raw = path.read_bytes()
@@ -319,6 +341,7 @@ def validate_text_integrity() -> None:
 
 
 def validate_compose_icon_imports() -> None:
+    """Validate that used Compose icons have explicit imports."""
     checked = 0
     for path in files(["*.kt"]):
         text = path.read_text(encoding="utf-8")
@@ -334,6 +357,7 @@ def validate_compose_icon_imports() -> None:
 
 
 def validate_release_contracts() -> None:
+    """Validate cross-component runtime and release invariants."""
     bridge = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/LocalBridgeService.kt").read_text(encoding="utf-8")
     backup = (ROOT / "app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt").read_text(encoding="utf-8")
     database = (ROOT / "app/src/main/java/com/tabdeck/app/data/local/TabDeckDatabase.kt").read_text(encoding="utf-8")
@@ -404,6 +428,7 @@ def validate_release_contracts() -> None:
 
 
 def validate_workflow_contracts() -> None:
+    """Validate CI and release workflow safety contracts."""
     workflows = {
         "CI": ROOT / ".github/workflows/ci.yml",
         "Release": ROOT / ".github/workflows/release.yml",
@@ -455,6 +480,7 @@ def validate_workflow_contracts() -> None:
 
 
 def validate_no_obvious_secrets() -> None:
+    """Scan source and documentation for obvious embedded secrets."""
     candidates = files(["*.kt", "*.kts", "*.js", "*.json", "*.ps1", "*.md", "*.xml"])
     patterns = {
         "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -470,6 +496,7 @@ def validate_no_obvious_secrets() -> None:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its exit status."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", type=Path, help="Write the validation report to this path")
     args = parser.parse_args()

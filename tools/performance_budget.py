@@ -8,12 +8,14 @@ DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "tools" / "performance-bu
 
 
 def finite_number(value, label):
+    """Validate and normalize a finite numeric performance result."""
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise ValueError(f"{label} must be a finite number")
     return float(value)
 
 
 def main() -> int:
+    """Run the command-line entry point and return its exit status."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--results", type=Path)

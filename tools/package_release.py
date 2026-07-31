@@ -41,6 +41,7 @@ EXCLUDED_SUFFIXES = {
 
 
 def run_checked(command: list[str], cwd: Path = ROOT) -> str:
+    """Run a subprocess and raise an actionable error when it fails."""
     process = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
     output = process.stdout + process.stderr
     if process.returncode != 0:
@@ -49,12 +50,14 @@ def run_checked(command: list[str], cwd: Path = ROOT) -> str:
 
 
 def fixed_time(version: ProductVersion) -> tuple[int, int, int, int, int, int]:
+    """Return the deterministic archive timestamp used for release packaging."""
     year, month, day = (int(part) for part in version.release_date.split("-"))
     # ZIP timestamps cannot be earlier than 1980 and are stored at two-second precision.
     return max(1980, year), month, day, 12, 0, 0
 
 
 def should_include(path: Path) -> bool:
+    """Return whether a repository path belongs in a source archive."""
     relative = path.relative_to(ROOT)
     if any(part in EXCLUDED_PARTS for part in relative.parts):
         return False
@@ -66,6 +69,7 @@ def should_include(path: Path) -> bool:
 
 
 def zip_info(archive_name: str, executable: bool, timestamp: tuple[int, int, int, int, int, int]) -> zipfile.ZipInfo:
+    """Build deterministic ZIP metadata for an archive entry."""
     info = zipfile.ZipInfo(archive_name, timestamp)
     info.compress_type = zipfile.ZIP_DEFLATED
     permissions = 0o755 if executable else 0o644
@@ -75,6 +79,7 @@ def zip_info(archive_name: str, executable: bool, timestamp: tuple[int, int, int
 
 
 def is_executable(path: Path) -> bool:
+    """Return whether a path should retain executable permissions in archives."""
     return bool(path.stat().st_mode & stat.S_IXUSR) or path.name == "gradlew" or path.suffix == ".sh"
 
 
@@ -83,6 +88,7 @@ def write_archive(
     entries: list[tuple[Path, str]],
     timestamp: tuple[int, int, int, int, int, int],
 ) -> None:
+    """Write a deterministic ZIP archive from the supplied entries."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for source, archive_name in sorted(entries, key=lambda item: item[1]):
@@ -97,6 +103,7 @@ def write_archive(
 
 
 def source_entries(prefix: str) -> list[tuple[Path, str]]:
+    """Collect deterministic source-archive entries from the repository."""
     return [
         (path, f"{prefix}/{path.relative_to(ROOT).as_posix()}")
         for path in ROOT.rglob("*")
@@ -105,6 +112,7 @@ def source_entries(prefix: str) -> list[tuple[Path, str]]:
 
 
 def folder_entries(folder: Path, prefix: str = "") -> list[tuple[Path, str]]:
+    """Collect deterministic archive entries from a repository folder."""
     entries: list[tuple[Path, str]] = []
     for path in folder.rglob("*"):
         if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts:
@@ -114,6 +122,7 @@ def folder_entries(folder: Path, prefix: str = "") -> list[tuple[Path, str]]:
 
 
 def sha256(path: Path) -> str:
+    """Return the SHA-256 digest of a file."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -122,6 +131,7 @@ def sha256(path: Path) -> str:
 
 
 def media_type(path: Path) -> str:
+    """Return the release media type for an artifact path."""
     overrides = {
         ".apk": "application/vnd.android.package-archive",
         ".aab": "application/octet-stream",
@@ -131,6 +141,7 @@ def media_type(path: Path) -> str:
 
 
 def copy_android_artifacts(output: Path, prefix: str, required: bool) -> list[Path]:
+    """Copy verified Android APK and AAB outputs into the release directory."""
     candidates = [
         (ROOT / "app/build/outputs/apk/release/app-release.apk", output / f"{prefix}.apk"),
         (ROOT / "app/build/outputs/bundle/release/app-release.aab", output / f"{prefix}.aab"),
@@ -154,6 +165,7 @@ def copy_android_artifacts(output: Path, prefix: str, required: bool) -> list[Pa
 
 
 def verify_archive_entries(required: dict[Path, list[str]]) -> None:
+    """Verify that an archive contains the required release entries."""
     for archive_path, expected in required.items():
         with zipfile.ZipFile(archive_path) as archive:
             missing = [entry for entry in expected if entry not in archive.namelist()]
@@ -162,6 +174,7 @@ def verify_archive_entries(required: dict[Path, list[str]]) -> None:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its exit status."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
     parser.add_argument(
