@@ -169,9 +169,23 @@ def main() -> int:
         action="store_true",
         help="Fail unless a release APK and AAB already exist under app/build/outputs",
     )
+    parser.add_argument("--source-commit", default="", help="Immutable Git commit used for this artifact set")
+    parser.add_argument("--release-tag", default="", help="Release tag bound to the source commit")
+    parser.add_argument("--signing-cert-sha256", default="", help="Approved Android signing certificate fingerprint")
     args = parser.parse_args()
 
     version = load_version()
+    source_commit = args.source_commit.strip().lower()
+    release_tag = args.release_tag.strip() or version.tag
+    signing_cert = args.signing_cert_sha256.replace(":", "").replace(" ", "").upper()
+    if source_commit and (len(source_commit) != 40 or any(char not in "0123456789abcdef" for char in source_commit)):
+        raise RuntimeError("--source-commit must be a 40-character lowercase Git SHA")
+    if release_tag != version.tag:
+        raise RuntimeError(f"Release tag {release_tag!r} does not match version tag {version.tag!r}")
+    if signing_cert and (len(signing_cert) != 64 or any(char not in "0123456789ABCDEF" for char in signing_cert)):
+        raise RuntimeError("--signing-cert-sha256 must be a 64-character SHA-256 fingerprint")
+    if args.require_android_artifacts and (not source_commit or not signing_cert):
+        raise RuntimeError("Installable releases require --source-commit and --signing-cert-sha256")
     prefix = version.artifact_prefix
     archive_root = prefix
     timestamp = fixed_time(version)
@@ -239,13 +253,18 @@ def main() -> int:
     assets = [source_zip, firefox_xpi, chromium_zip, desktop_zip, validation_path, *android_artifacts]
     manifest_path = output / f"{prefix}-release-manifest.json"
     manifest = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "product": "TabDeck",
         "version": version.name,
         "versionCode": version.code,
         "tag": version.tag,
         "releaseDate": version.release_date,
         "androidArtifactsRequired": args.require_android_artifacts,
+        "provenance": {
+            "sourceCommit": source_commit or None,
+            "releaseTag": release_tag,
+            "signingCertificateSha256": signing_cert or None,
+        },
         "assets": [
             {
                 "name": path.name,

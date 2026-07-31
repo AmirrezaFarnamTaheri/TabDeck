@@ -1,429 +1,305 @@
-# TabDeck v1 Deep Improvement and Expansion Plan
+# TabDeck v1 Deep Improvement and Expansion Program
 
 ## Purpose
 
-This document is the implementation contract for the next TabDeck cycle. It converts the deep forensic audit into an ordered delivery program with explicit architecture, product, reliability, security, testing, release, and documentation gates.
+This document is the implementation contract for TabDeck’s next delivery cycle. It records platform boundaries, immutable evidence, executable acceptance gates, and the ordered path from the current Android/browser/Windows product to a stronger browser-session control plane.
 
 TabDeck remains one product with three execution surfaces:
 
-1. **Android app** — canonical library, saved views, decks, tags, import/export, transfer orchestration, widgets, diagnostics, and user-facing state.
-2. **Browser connectors** — browser-specific capture, restore, grouping, and diagnostics within official extension APIs.
-3. **Windows companion** — USB/ADB and DevTools-assisted workflows that Android cannot legitimately perform itself.
+1. **Android app** — canonical library, saved views, decks, tags, imports, exports, transfer orchestration, widgets, diagnostics, and user-visible state.
+2. **Browser connectors** — browser-specific capture and restore within official extension APIs.
+3. **Windows companion** — user-authorized USB/ADB and DevTools workflows that Android cannot perform directly.
 
-The goal is not a rewrite. The goal is disciplined convergence around the strongest existing implementation, removal of drift, and measurable improvement in user power, reliability, accessibility, operability, and release quality.
+A broad rewrite is rejected. Changes must preserve the green baseline and land as independently testable slices.
 
-## Current verified baseline
+## Immutable verified baseline
 
-The current `main` branch has already reached a strong build baseline:
+The implementation baseline is commit `b486aa826b82512b45e84e31cbb35b81fc9fac78` (“Converge Android toolchain and repair Kotlin build”). Its retained CI artifact is `TabDeck-CI-b486aa826b82512b45e84e31cbb35b81fc9fac78.zip` with SHA-256 `98c990fccd3dbbbb881479a9b89628bb1afd97910ecc642de41345b848e3931e`.
 
-- committed Gradle wrapper with integrity verification
-- synchronized public versions
-- executable Kotlin core checks
-- static project validation
-- Kotlin/Java compilation
-- Android unit tests
-- Android lint
-- debug APK assembly
-- CI artifact upload
-- corrected PowerShell parser failure
-- corrected API-27 resource split
-- coherent Gradle/AGP/Kotlin/KSP/Compose toolchain
-- Room paging dependency and build fixes
-- release workflow that fails closed when signing material is absent
+That evidence covers:
 
-The remaining release prerequisite is owner-provided persistent Android signing material. Disposable CI-generated release keys are explicitly rejected because they would break future update compatibility.
+- committed and checksum-pinned Gradle wrapper;
+- AGP 9.3.1, Gradle 9.6.1, Kotlin Compose 2.4.10, and KSP 2.3.10 convergence;
+- synchronized public versions;
+- executable Kotlin core checks;
+- static cross-component validation;
+- Kotlin/Java compilation;
+- Android unit tests and lint;
+- debug APK assembly and artifact upload.
+
+Subsequent workflow-only cleanup ended at commit `cf0344ce03ecc015bf6f63a3437c6f5b8ef9403e`. Every implementation commit in this PR must obtain its own green CI run and artifact; previous evidence is not treated as proof for changed code.
+
+The remaining production-publication gates are explicit and external to source correctness:
+
+1. protected GitHub `release` environment configured;
+2. persistent owner-controlled keystore secrets installed;
+3. `TABDECK_RELEASE_CERT_SHA256` configured to the approved signing certificate;
+4. signed APK and AAB fingerprints both match that approved certificate;
+5. tag resolves to the immutable source commit recorded in the release manifest;
+6. checksums, attestation, and GitHub Release publication complete successfully.
 
 ## Product thesis
 
-TabDeck should become a **browser session control plane** rather than a passive bookmark collector.
-
-The canonical Android library should model captured tabs, browser sessions, user-defined decks, source provenance, saved queries, transfer history, and recovery state. Connectors should expose only the capabilities officially available on their platform. The Windows companion should exist to unlock USB-assisted capture, cross-browser migration, and live recovery for browsers that expose supported DevTools targets.
+TabDeck is a **browser session control plane**, not a passive bookmark collector. Android owns canonical user-visible state. Connectors expose only officially available browser capabilities. The Windows companion handles USB-assisted capture, cross-browser movement, and live recovery through explicit ADB and DevTools authorization.
 
 ## Architectural invariants
 
-The following invariants are mandatory:
-
 - Android owns canonical user-visible state.
-- External browser tab IDs are session-scoped identifiers, never durable primary keys.
-- Every imported tab receives a stable TabDeck UUID.
-- Source identity includes connector, device, browser channel/profile, session/window identity, external tab ID, and first-seen timestamp.
-- Bulk mutations are bounded, chunked, cancellable where possible, and produce explicit partial-failure outcomes.
-- Destructive actions are either reversible, previewable, or explicitly irreversible.
-- No universal browser access is claimed where Android sandboxing prevents it.
-- Package visibility uses explicit `<queries>` entries rather than broad package discovery.
-- Bridge sessions remain short-lived, authenticated, rate-limited, and restricted to loopback/private-network clients.
-- Release signing uses persistent owner-controlled keys.
-- CI validates the committed wrapper; it never regenerates wrapper files.
+- Every stored tab has a TabDeck UUID independent from browser identifiers.
+- External browser tab IDs are session-scoped and may be reused after restart.
+- Durable source equality uses connector, device, browser channel/profile, session/window identity, and external tab ID.
+- `firstSeenAt` is metadata only and never participates in identity equality or retry deduplication.
+- A bounded opaque source-tab ID contains a one-way session fingerprint; the raw session token is not persisted.
+- Legacy unscoped source IDs remain readable but cannot authorize destructive complete-snapshot reconciliation.
+- Bulk mutations are bounded, chunked, and report partial outcomes.
+- Destructive actions are reversible, previewable, or explicitly irreversible.
+- Package visibility uses explicit `<queries>` entries; `QUERY_ALL_PACKAGES` is prohibited.
+- The HTTP bridge is loopback-only. Desktop access uses explicit ADB forwarding.
+- Direct LAN exposure remains disabled until authenticated TLS, peer/address allowlisting, certificate lifecycle management, explicit opt-in, and revocation are implemented.
+- Release signing uses persistent owner-controlled keys and an approved certificate fingerprint.
+- CI validates the committed wrapper and never regenerates it.
 - Documentation describes implemented behavior only.
 
-## Delivery streams
+The critical decisions are maintained in `docs/adr/`.
 
-### 1. Adaptive Android control plane
+## Implemented reliability and data-integrity tranche
 
-Implement a truly adaptive Compose shell:
+### Durable source identity
 
-- list-detail layout on medium and large widths
-- persistent inspector/supporting pane where appropriate
-- bottom navigation on compact widths
-- navigation rail or drawer on larger widths
-- foldable and desktop-window support driven by window size classes
-- state restoration across window resizing and process recreation
-- keyboard and mouse affordances for ChromeOS and desktop-style Android environments
+Implemented contracts:
 
-Power-user interactions:
+- `SourceIdentity` produces deterministic, bounded, session-scoped opaque source IDs;
+- the same session/tab pair resolves to the same identity on retry;
+- the same raw browser tab ID in a later session resolves to a different identity;
+- connectors send `sourceSessionId` and `identityVersion`;
+- complete snapshots are honored only with provable browser, device, session, and per-tab identity;
+- duplicate source identities inside one payload are coalesced deterministically;
+- Desktop Link derives a session fingerprint from the authorized device and visible DevTools sockets.
 
-- command palette with searchable actions
-- keyboard shortcuts for selection, filtering, pinning, moving, archiving, restoring, and launching
-- right-click/context menus on pointer-capable devices
-- split comparison view for duplicate clusters and session diffs
-- query-wide selection with visible scope and safety caps
-- bulk tag add/remove/replace/clear
-- bulk pin/unpin, regroup, archive, snooze, restore, trash, and transfer
-- persistent filter chips and saved smart views
-- ordered launch decks with drag-reorder support
+Acceptance gates:
 
-Acceptance criteria:
+- pure Kotlin core check;
+- JVM unit tests for deterministic identity, restart separation, legacy compatibility, sanitization, and bounds;
+- static cross-component validator checks parser and connector participation.
 
-- core flows operate on compact, medium, and expanded widths
-- no action depends on an item being present in the currently loaded paging window
-- selection state remains consistent after database refreshes
-- all destructive bulk operations show scope, preview, and outcome
-- keyboard-only navigation covers all primary workflows
+### Typed backup classification
 
-### 2. Accessibility and interaction quality
+`SnapshotJsonCodec.decodeClassified` returns one of:
 
-Treat accessibility as a release gate:
+- `Success(snapshot)` — a supported, valid TabDeck backup;
+- `NotBackup` — definitively unrelated text/JSON, eligible for ordinary URL extraction;
+- `Rejected(reason)` — malformed, unsupported, or invalid backup-shaped input.
 
-- semantic roles and state descriptions for rows, groups, decks, filters, and widgets
-- custom accessibility actions for frequent row operations
-- traversal groups and explicit traversal ordering where default order is insufficient
-- minimum 48 dp targets
-- large-text support without clipped controls
-- contrast validation across light/dark/dynamic color themes
-- TalkBack, Switch Access, keyboard-only, and mouse testing
-- Compose automated accessibility checks in instrumentation tests
+`TabDeckViewModel.importDocument` runs URL extraction only for `NotBackup`. A rejected backup can no longer be partially reinterpreted as a URL list.
 
-Acceptance criteria:
+Acceptance gates:
 
-- no blocking issues in TalkBack and Switch Access smoke tests
-- all actionable controls have accessible names and roles
-- large-font layouts remain usable without horizontal clipping
-- focus and traversal order match visual hierarchy
+- pure classifier checks for plain text, malformed backup-shaped JSON, and unrelated JSON;
+- future versions and missing tab inventories are rejected in the codec;
+- static validator requires the typed decode path in the ViewModel.
 
-### 3. Large-library performance
+### Bridge trust boundary
 
-Preserve Room + Paging as the canonical large-library backbone and add measurable budgets:
+Implemented policy:
 
-- database-side filtering, sorting, grouping, and facets
-- stable keys and `contentType` hints in lazy layouts
-- bounded query projections
-- no whole-library Compose snapshots
-- chunked SQLite operations
-- baseline profiles
-- macrobenchmarks for startup, scroll, search, and import
-- recomposition tracing for high-frequency screens
-- background parsing and normalization on bounded dispatchers
+- bind only to loopback;
+- advertise only `http://127.0.0.1:48721/api/v3/import`;
+- accept only loopback clients;
+- remove private-network CORS claims;
+- coerce imported/persisted legacy LAN scope to `THIS_DEVICE`;
+- disable LAN scope in the UI with an explicit security explanation;
+- restrict Firefox and Chromium connector endpoint validation to loopback;
+- support desktop use through user-authorized ADB port forwarding;
+- retain token rotation, expiry, constant-time comparison, strict origins, bounds, and rate limits.
 
-Initial performance budgets:
+Direct LAN access is not considered authenticated merely because an address is private or an Origin header is accepted.
 
-- cold start benchmark recorded and tracked
-- library scroll has no sustained jank in a 25,000-item synthetic dataset
-- common search/filter query returns first page without blocking the main thread
-- 25,000-item import remains bounded in memory and reports progress
-- widget refresh does not scan the whole library
+### Release provenance and signing identity
 
-### 4. Import, export, backup, and recovery
+The release workflow now:
 
-Expand the portability model while preserving strict validation:
+1. runs inside the protected `release` environment;
+2. records the immutable checked-out source commit;
+3. verifies an existing tag resolves to that commit;
+4. validates the owner-provided keystore certificate against `TABDECK_RELEASE_CERT_SHA256`;
+5. builds signed APK/AAB outputs;
+6. verifies APK alignment and signature validity;
+7. verifies AAB signature validity;
+8. extracts APK and AAB certificate SHA-256 fingerprints independently;
+9. requires both fingerprints to equal the approved fingerprint;
+10. records source commit, release tag, and signing fingerprint in schema-v2 release manifest provenance;
+11. verifies checksums and manifest bindings before upload;
+12. creates or verifies the tag against the same commit;
+13. attests and publishes only after all gates pass.
 
-- import provenance per source connector/device/browser/session
-- complete JSON backup with versioned schema
-- Markdown, CSV, bookmarks HTML, and plain-text exports
-- export formula neutralization and HTML escaping
-- round-trip fixtures for every format
-- bounded file and URI ingestion
-- partial import reporting
-- zero-tab complete snapshots that can reconcile stale source records
-- explicit merge/replace/append restore modes
-- migration rehearsal for all persisted schema versions
-- recovery bundle containing sanitized diagnostics and non-secret metadata
+## Adaptive Android control plane
 
-Acceptance criteria:
+The existing adaptive shell, paging-backed library, command palette, list/grid density controls, smart views, decks, query-wide operations, and navigation adaptation remain the foundation.
 
-- every supported export has a round-trip or golden-fixture test
-- future backup versions are rejected safely
-- invalid records do not corrupt valid records in the same import
-- bridge tokens and signing material never appear in backups or diagnostics
+Further UI work must preserve these acceptance criteria:
 
-### 5. Transfer and background-work redesign
+- compact, medium, and expanded widths remain functional;
+- no bulk action depends on the currently loaded paging window;
+- selection survives database invalidation safely;
+- keyboard-only navigation covers primary workflows;
+- pointer context actions are equivalent to touch actions;
+- destructive operations show scope and outcome;
+- large text does not clip controls;
+- TalkBack traversal follows visual hierarchy.
 
-Use the correct Android execution primitive for each workload:
+## Measurable performance budgets
 
-- unique WorkManager jobs for ordinary imports, reconciliation, and deferred maintenance
-- user-initiated transfer jobs where platform support and UX justify them
-- foreground service only for explicitly user-visible operations that require it
-- cancellation and progress propagation
-- idempotency keys for connector imports
-- retry policies limited to transient failures
-- bounded backoff and retry count
-- durable transfer history with partial-success details
-- Android 15 timeout handling retained
+The executable budget configuration is `tools/performance-budgets.json`; `tools/performance_budget.py` validates configuration and benchmark results.
 
-Acceptance criteria:
+| Metric | Pass threshold | Reference device | Dataset | Measurement |
+|---|---:|---|---|---|
+| Cold start p95 | ≤ 1,200 ms | Pixel 6/API 36 or equivalent | 25,000 tabs | Macrobenchmark `StartupTimingMetric`, 10 cold iterations |
+| Scroll jank | ≤ 3.0% | Pixel 6/API 36 or equivalent | 25,000 tabs, dense list | `FrameTimingMetric`, 10 scripted journeys |
+| Search first-page p95 | ≤ 250 ms | Pixel 6/API 36 or equivalent | 25,000 mixed-facet tabs | query commit to first Paging item, 30 runs |
+| Import peak RSS | ≤ 256 MiB | Pixel 6/API 36 or equivalent | 25,000-tab JSON snapshot | Perfetto process RSS peak |
+| Import throughput | ≥ 1,000 tabs/s | Pixel 6/API 36 or equivalent | 25,000-tab JSON snapshot | accepted tabs / parse+persist duration, median of 5 |
+| Widget refresh p95 | ≤ 250 ms | Pixel 6/API 36 or equivalent | 25,000 tabs | update request to state publication, 30 runs |
 
-- duplicate work requests converge to one canonical job
-- retries cannot duplicate imported tabs
-- cancellation leaves database state consistent
-- partial transfers record opened, failed, skipped, and unresolved items separately
+CI rule: fail if a metric breaches its absolute budget or regresses more than 10% from the approved baseline, whichever is stricter. Device-produced results are passed to `performance_budget.py --results <file>`.
 
-### 6. Widget suite
+## Import, export, backup, and recovery
 
-Deliver a coherent Glance widget family:
+Required guarantees:
 
-- **Library Health** — active, archived, trash, duplicates, stale sources
-- **Quick Capture** — share/import shortcuts and bridge status
-- **Deck Launcher** — configurable named deck with browser target
-- **Transfer Status** — active/recent transfer progress and recovery action
+- bounded text, file, URI, JSON, and bridge ingestion;
+- source provenance per connector/device/browser/session;
+- typed rejection of malformed/unsupported backups;
+- invalid individual tab records do not corrupt accepted records;
+- zero-tab complete snapshots can reconcile stale source records only with provable session identity;
+- readable exports preserve escaping and spreadsheet-formula hardening;
+- bridge tokens and signing material never appear in backups or diagnostics;
+- recovery diagnostics contain sanitized metadata only.
 
-Required quality:
+## Transfer and background work
 
-- optional configuration and reconfiguration
-- in-app pin requests where supported
-- generated previews for supported Android versions
-- no whole-library work during widget updates
-- deterministic empty/error states
-
-### 7. Chromium connector modernization
-
-Evolve the Chromium connector into a richer MV3 side-panel experience:
-
-- current-window and all-window scopes
-- `chrome.tabs`, `chrome.tabGroups`, and `chrome.sessions`
-- native group title/color preservation
-- session recovery and recently closed support where available
-- explicit diagnostic mode
-- bridge capability negotiation
-- token storage in session-scoped storage by default
-- optional bookmark/reading-list export hooks
-- minimal permissions and clear permission rationale
-
-The connector must not treat browser tab IDs as durable across restarts.
-
-### 8. Firefox Android connector hardening
-
-Maintain a distinct Android Firefox connector path:
-
-- Manifest V2 while Android support requires it
-- `browser_specific_settings.gecko_android`
-- Firefox, Beta, and Nightly channel labels
-- explicit permission onboarding
-- current/all-window capture
-- pinned-tab protection
-- duplicate preview and cleanup
-- install-from-file documentation for development distribution
-- AMO packaging path for signed distribution
-
-### 9. Windows companion v2
-
-Graduate the PowerShell utility into a first-class desktop companion while retaining the script as a fallback/reference implementation.
-
-Preferred target:
-
-- .NET desktop application with WinUI 3 or equivalent native Windows shell
-- portable self-contained single-file package
-- MSIX packaging path
-- device discovery and authorization diagnostics
-- ADB forward lifecycle management
-- supported DevTools target enumeration
-- safe open-before-close transfer semantics
-- browser/session comparison
-- recovery bundle export
-- structured logs with correlation IDs
-- no browser profile database scraping
+Ordinary deferred maintenance should use unique WorkManager jobs. User-visible browser opening remains an explicit foreground interaction. Every transfer must have cancellation, progress, bounded retries for transient errors, and durable partial-success details.
 
 Acceptance criteria:
 
-- temporary ADB forwards are removed on normal exit and crash recovery
-- closing source targets occurs only after destination verification
-- unsupported browsers are reported explicitly
-- portable package runs without a machine-wide .NET installation
+- duplicate job requests converge;
+- retries cannot duplicate imported tabs;
+- cancellation leaves a transactionally consistent database;
+- partial transfer results separate opened, failed, skipped, and unresolved tabs;
+- Android 15 foreground-service timeout handling remains active.
 
-### 10. Security and privacy hardening
+## Widget suite
 
-Required controls:
+The Library Health and Quick Capture widgets remain query-bounded and deterministic. Future Deck Launcher and Transfer Status surfaces must use aggregate queries rather than whole-library scans and must support empty/error/configuration states.
 
-- explicit Android package queries
-- no `QUERY_ALL_PACKAGES`
-- localhost/private-network bridge restrictions
-- strict Origin and content-type validation
-- short-lived random bridge tokens
-- constant-time token comparison
-- request/body/header/tab-count bounds
-- rate limiting and stale-client pruning
-- no secret-bearing logs
-- protected `release` environment for signing material
-- least-privilege `GITHUB_TOKEN` permissions
-- dependency and wrapper integrity checks
-- extension permission minimization
-- sanitized diagnostic exports
+## Browser connectors
 
-### 11. Observability and diagnostics
+### Chromium desktop
 
-Add actionable, privacy-preserving diagnostics:
+- Manifest V3;
+- session-scoped token storage when supported;
+- session-scoped source identity;
+- native group metadata preservation;
+- current/all-window scopes;
+- duplicate preview/cleanup separated from import;
+- loopback-only bridge endpoint, including ADB-forwarded loopback;
+- capability/health preflight before sending inventory.
 
-- correlation ID for bridge imports and transfers
-- structured event model for import, normalization, dedupe, persistence, open, close, and reconciliation stages
-- local diagnostic timeline
-- bounded rotating logs
-- sanitized diagnostic bundle export
-- health screen covering database, bridge, WorkManager, widgets, browser detection, and connector compatibility
-- explicit failure taxonomy and remediation hints
+### Firefox Android
 
-Do not add remote telemetry until there is a defined privacy policy, user consent model, data-retention policy, and operational consumer.
+- distinct Firefox Android connector path;
+- Manifest V2 while Android support requires it;
+- session-scoped identity when session storage is available;
+- complete snapshots disabled when session persistence cannot be proven;
+- pinned-tab protection;
+- duplicate preview and bounded cleanup;
+- loopback-only bridge endpoint;
+- stable/Beta/Nightly labeling and install documentation.
 
-### 12. CI/CD and release convergence
+## Windows companion safety and portability
 
-CI must remain deterministic and non-mutating:
+The current PowerShell companion remains the verified fallback while a packaged native UI is evaluated.
 
-- checkout
-- JDK setup
-- committed-wrapper verification
-- project validator
-- executable core checks
-- unit tests
-- Android lint
-- debug APK assembly
-- PowerShell parser validation
-- connector JS/manifest checks
-- artifacts and diagnostics upload
+Implemented safety contracts:
 
-Release must:
+- recognized Chromium-family DevTools sockets are allowlisted;
+- unsupported/unrecognized sockets are reported explicitly;
+- every temporary forward is removed on refresh and normal window exit;
+- destination creation is followed by polling-based destination verification;
+- source closure occurs only after destination verification;
+- a stable source-session fingerprint is sent with bridge payloads;
+- bridge token is never stored;
+- the portable script has no machine-wide .NET application-runtime dependency.
 
-- use a protected `release` environment
-- build from a real commit
-- validate requested semantic version
-- materialize persistent owner-provided signing material
-- build signed APK and AAB
-- verify APK with `apksigner`
-- verify AAB with `jarsigner -verify -strict`
-- package connectors, desktop artifacts, source, checksums, and manifest
-- produce attestations where repository/plan support allows
-- create or verify the tag only after all gates pass
-- publish a GitHub Release
+`desktop-link/Test-TabDeckLink.ps1` parses the script and verifies those contracts in CI.
 
-## Testing matrix
+Manual/integration matrix:
 
-### Unit
+1. normal exit removes DevTools and bridge forwards;
+2. forced interruption followed by next startup detects/replaces stale forwards;
+3. destination verification failure leaves the source tab open;
+4. destination success permits source closure only when selected;
+5. unsupported sockets are listed and skipped;
+6. USB disconnect/reconnect produces an actionable error and recovers after refresh;
+7. portable ZIP launches with PowerShell 7.2+ and Android platform tools, without a separately installed .NET application runtime.
 
-- URL extraction and canonicalization
-- IDN/IPv6/default-port behavior
-- tracker stripping modes
-- duplicate clustering and survivor selection
-- rule compilation and application
-- saved-view serialization
-- deck ordering and membership
-- import parser edge cases
-- export escaping
-- stable source identity
+## Security and privacy
 
-### Integration
+- local-only data by default;
+- no telemetry SDK;
+- strict URL and input validation;
+- loopback bridge, short-lived random token, rotation, rate limits, bounds, and no secret logs;
+- explicit Android package queries;
+- no browser profile database scraping;
+- release keys only in protected environment secrets;
+- minimum `GITHUB_TOKEN` permissions;
+- wrapper and dependency integrity validation;
+- sanitized diagnostic export only.
 
-- Room migrations
-- Paging queries and facets
-- bulk actions
-- import/export round trips
-- snapshot reconciliation
-- transfer-history persistence
-- WorkManager uniqueness and cancellation
-- widget aggregate queries
+## CI and release gates
 
-### Instrumentation
+Pull-request CI must pass:
 
-- adaptive navigation
-- list-detail state restoration
-- command palette
-- keyboard and pointer flows
-- accessibility semantics
-- widget configuration
-- process recreation
+- synchronized versions;
+- committed wrapper validation;
+- executable core checks;
+- static project validator;
+- performance-budget configuration validation;
+- PowerShell parser and Desktop Link safety contracts;
+- connector JavaScript checks;
+- Android unit tests;
+- Android lint;
+- debug APK assembly;
+- artifact/report upload.
 
-### Manual platform validation
+Release adds protected approval, persistent signing material, fingerprint matching, signed APK/AAB verification, deterministic packaging, manifest provenance, checksums, attestations, tag-to-commit verification, and GitHub Release publication.
 
-- Android phone, tablet, foldable, and resizable desktop window
-- Firefox Android stable/beta/nightly
-- Chromium desktop connector variants
-- ADB-authorized Android Chromium targets
-- USB disconnect/reconnect
-- bridge token expiry and rotation
-- partial transfer failure and recovery
+## Delivery sequence
 
-## Prioritized implementation sequence
-
-### Phase 0 — Preserve the release baseline
-
-- keep `main` green
-- configure protected release environment
-- install persistent signing secrets
-- produce signed v1.0.0 APK/AAB
-- verify signatures, checksums, and release assets
-
-### Phase 1 — Reliability and data integrity
-
-- stable identity model
-- import/export round-trip suite
-- WorkManager orchestration
-- partial-failure and recovery semantics
-- diagnostic correlation IDs
-
-### Phase 2 — Adaptive UX and accessibility
-
-- list-detail layout
-- rail/drawer adaptation
-- keyboard/mouse support
-- command palette
-- semantics and assistive-technology validation
-
-### Phase 3 — Widgets and connector modernization
-
-- widget suite
-- Chromium side panel
-- Firefox Android hardening
-- bridge capability negotiation
-
-### Phase 4 — Windows companion v2
-
-- native desktop project
-- portable package
-- MSIX path
-- structured diagnostics
-- hardened ADB/DevTools lifecycle
-
-### Phase 5 — Distribution and performance
-
-- baseline profiles and macrobenchmarks
-- Play internal testing automation
-- extension-store packaging
-- Windows signing and installer automation
+1. Merge this reliability/security/provenance tranche after green CI.
+2. Configure the protected release environment and persistent signing identity.
+3. Produce the signed v1.0.0 candidate.
+4. Capture device benchmark results and approve a performance baseline.
+5. Continue adaptive accessibility and connector UX work as focused PRs.
+6. Evaluate and implement a packaged Windows UI without weakening the verified PowerShell fallback.
 
 ## PR completion checklist
 
-A feature or remediation is complete only when all applicable items are checked:
-
-- [ ] production code implemented
-- [ ] persistence/schema implications handled
-- [ ] configuration synchronized
-- [ ] tests cover success and failure paths
-- [ ] accessibility impact reviewed
-- [ ] performance impact measured or bounded
-- [ ] security/trust boundary reviewed
-- [ ] diagnostics and recovery behavior present
-- [ ] documentation matches implementation
-- [ ] clean CI passes
-- [ ] release/rollback implications documented
-- [ ] no temporary workflows, debug residue, or secrets remain
+- [x] README documentation index repaired without truncating existing sections
+- [x] durable session-scoped source identity implemented and tested
+- [x] first-seen time removed from identity equality
+- [x] typed backup classification implemented
+- [x] rejected backups cannot fall through to URL extraction
+- [x] bridge restricted to loopback
+- [x] LAN mode disabled until authenticated encrypted transport exists
+- [x] release manifest bound to source commit/tag/signing fingerprint
+- [x] APK and AAB fingerprints compared with approved certificate
+- [x] measurable performance budgets checked in
+- [x] Windows safety/portability contracts checked in
+- [x] critical invariants extracted into ADRs
+- [ ] PR CI green on the final implementation commit
+- [ ] protected release environment and owner signing secrets configured
+- [ ] signed v1.0.0 APK/AAB built, verified, attested, and published
 
 ## Readiness verdict
 
-The current repository is **conditionally ready** for a signed v1.0.0 release. Source correctness, CI, lint, unit tests, static validation, and debug assembly are verified. Production publication remains blocked only by repository-owner signing secrets and protected-environment configuration.
-
-The broader improvement program should proceed incrementally from this green baseline. A broad rewrite is rejected. The highest-value path is release stabilization, reliability/data integrity, adaptive UX/accessibility, connector modernization, and only then a first-class Windows companion.
+The source is ready for review only after the final PR commit obtains a green CI run. Production publication remains gated by the protected release environment, persistent owner signing secrets, approved certificate fingerprint, and a successful signed release workflow. No time-sensitive claim in this document substitutes for those immutable checks.

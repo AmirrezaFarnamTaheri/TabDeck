@@ -1,93 +1,67 @@
 # Build and release
 
-## Version authority
+## Version and toolchain authority
 
-`version.properties` is the public version source of truth:
+`version.properties` controls the public product version. Internal Room, backup, saved-query, identity, and bridge versions are compatibility contracts and are not reset for branding.
 
-```properties
-VERSION_NAME=1.0.0
-VERSION_CODE=1
-RELEASE_DATE=2026-07-30
-```
-
-`tools/check_version.py` verifies that Android and both extension manifests agree. Internal Room, backup, saved-query, and bridge versions are compatibility contracts and must not be reset for branding.
+The live release line uses JDK 17, AGP 9.3.1, Gradle 9.6.1, Kotlin Compose 2.4.10, KSP 2.3.10, Android SDK 36, and build-tools 36.0.0. The committed wrapper distribution checksum is authoritative; CI never regenerates wrapper files.
 
 ## Local verification
 
 ```bash
-./bootstrap-wrapper.sh
 python3 tools/check_version.py
 bash tools/run_core_checks.sh
-python3 tools/validate_project.py
-./gradlew clean test lintDebug assembleDebug
+python3 tools/validate_project.py --report build-validation-report.txt
+python3 tools/performance_budget.py --validate-config
+./gradlew --no-daemon test lintDebug assembleDebug
 ```
 
-The bootstrap script downloads the Gradle 9.1.0 wrapper JAR and verifies it against the checksum pinned in the script. The wrapper distribution itself is checksum-pinned in `gradle-wrapper.properties`.
+On Windows also run:
 
-## CI workflow
+```powershell
+pwsh -NoLogo -NoProfile -File .\desktop-link\Test-TabDeckLink.ps1
+```
 
-`.github/workflows/ci.yml` runs on pushes, pull requests, and manual dispatch. It:
+## Protected release environment and secrets
 
-1. installs JDK 17 and Gradle 9.1.0;
-2. installs Android SDK platform 36 and build-tools 36.0.0;
-3. generates and verifies the wrapper JAR when it is not committed;
-4. checks synchronized versions;
-5. runs the executable core harness and static validator;
-6. runs Android unit tests, lint, and a debug build;
-7. uploads the debug APK and reports.
+Create a GitHub environment named `release`, preferably with required reviewers. Configure these environment secrets:
 
-## Release secrets
-
-Configure these GitHub Actions secrets:
-
-- `TABDECK_KEYSTORE_BASE64` — base64-encoded Android keystore bytes.
+- `TABDECK_KEYSTORE_BASE64`
 - `TABDECK_KEYSTORE_PASSWORD`
 - `TABDECK_KEY_ALIAS`
 - `TABDECK_KEY_PASSWORD`
+- `TABDECK_RELEASE_CERT_SHA256` — the approved signing certificate SHA-256 fingerprint, with or without colons
 
-The workflow writes the keystore only into the runner's temporary directory and deletes it after use. Never commit a keystore or signing password.
+The workflow fails closed if any value is absent or if the keystore, APK, or AAB fingerprint differs from the approved fingerprint.
 
-## Create a release
+## Release process
 
-1. Update `version.properties`, `CHANGELOG.md`, and `docs/RELEASE_NOTES.md`.
-2. Run all local checks.
-3. Commit the release state.
-4. Create an annotated or signed tag exactly matching `v<VERSION_NAME>`:
+1. Update version metadata and release notes.
+2. Obtain green PR/main CI for the exact source commit.
+3. Approve the protected `release` environment.
+4. Run the Release workflow with `v<VERSION_NAME>` or push that tag.
+5. The workflow binds the run to `git rev-parse HEAD`.
+6. Existing tags must already resolve to that commit; manual runs create the tag only after all build and verification gates pass.
+7. Signed APK/AAB outputs are verified with `apksigner`, `zipalign`, `jarsigner -verify -strict`, and `keytool` certificate extraction.
+8. Both artifacts must match `TABDECK_RELEASE_CERT_SHA256`.
+9. `tools/package_release.py` writes schema-v2 provenance containing the source commit, release tag, and signing fingerprint.
+10. Checksums and manifest bindings are verified, assets are uploaded and attested, and the GitHub Release is published.
 
-```bash
-git tag -s v1.0.0 -m "TabDeck v1.0.0"
-git push origin v1.0.0
-```
+## Deterministic packaging
 
-The release workflow rejects a tag that disagrees with `version.properties` or the extension manifests.
-
-## Release workflow outputs
-
-The tag workflow builds and verifies:
-
-- `TabDeck-v1.0.0.apk`
-- `TabDeck-v1.0.0.aab`
-- optional R8 mapping output
-- Android Studio source archive
-- Firefox unsigned development XPI
-- Chromium desktop extension ZIP
-- Windows Desktop Link ZIP
-- validation report
-- SHA-256 checksum file
-- machine-readable release manifest
-
-It uploads a workflow artifact, creates provenance attestations, and publishes the matching GitHub Release using `docs/RELEASE_NOTES.md`.
-
-## Manual deterministic packaging
-
-After a successful Android release build:
+For an installable release:
 
 ```bash
-python3 tools/package_release.py --require-android-artifacts --output-dir dist
+python3 tools/package_release.py \
+  --require-android-artifacts \
+  --output-dir dist \
+  --release-tag v1.0.0 \
+  --source-commit <40-char-git-sha> \
+  --signing-cert-sha256 <64-hex-fingerprint>
 ```
 
-Without `--require-android-artifacts`, the command packages source/connectors and records that Android binaries were not present. This mode is useful for source-only validation but is not a final installable release.
+Source-only packaging may omit commit/fingerprint, but it is not an installable production release.
 
 ## Rollback
 
-Do not overwrite an existing release tag or asset set. Correct the defect, increment `VERSION_CODE`, choose a new semantic version, update release notes, and publish a new tag. If a published binary is unsafe, remove it from distribution and document the withdrawal without rewriting repository history.
+Never move or overwrite an existing release tag. Correct the defect, increment `VERSION_CODE`, choose a new semantic version, publish a new tag, and document withdrawal of unsafe artifacts without rewriting history.

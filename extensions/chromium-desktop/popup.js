@@ -19,6 +19,22 @@ async function fetchWithTimeout(url, options, timeoutMs = 20000) {
 
 function storageGet(defaults) { return new Promise(resolve => chrome.storage.local.get(defaults, resolve)); }
 function storageSet(values) { return new Promise(resolve => chrome.storage.local.set(values, resolve)); }
+function sessionGet(defaults) {
+  const area = chrome.storage.session;
+  return area ? new Promise(resolve => area.get(defaults, resolve)) : storageGet(defaults);
+}
+function sessionSet(values) {
+  const area = chrome.storage.session;
+  return area ? new Promise(resolve => area.set(values, resolve)) : storageSet(values);
+}
+async function getSourceSession() {
+  const key = 'tabdeckSourceSessionId';
+  const stored = await sessionGet({ [key]: '' });
+  if (stored[key]) return { id: stored[key], reliable: Boolean(chrome.storage.session) };
+  const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await sessionSet({ [key]: id });
+  return { id, reliable: Boolean(chrome.storage.session) };
+}
 function tabsQuery(query) { return new Promise((resolve, reject) => chrome.tabs.query(query, tabs => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve(tabs))); }
 function groupGet(id) { return new Promise(resolve => chrome.tabGroups.get(id, group => chrome.runtime.lastError ? resolve(null) : resolve(group))); }
 function tabsRemove(ids) { return new Promise((resolve, reject) => chrome.tabs.remove(ids, () => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve())); }
@@ -29,14 +45,9 @@ function endpointInfo(value) {
   const url = new URL(value);
   if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
   const host = url.hostname.toLowerCase();
-  const parts = host.split('.').map(Number);
-  const privateV4 = parts.length === 4 && parts.every(Number.isInteger) && (
-    parts[0] === 10 || parts[0] === 127 || (parts[0] === 192 && parts[1] === 168) ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-  );
   const ipv6 = host.replace(/^\[|\]$/g, '');
-  const privateV6 = ipv6 === '::1' || /^(fc|fd|fe[89ab])/i.test(ipv6);
-  if (!(host === 'localhost' || privateV4 || privateV6)) throw new Error('Use the private-LAN endpoint shown by TabDeck.');
+  const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
+  if (!loopback) throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
   if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
   url.pathname = '/api/v3/import'; url.search = ''; url.hash = '';
   return { url: url.toString(), permission: `${url.origin}/*` };
@@ -126,8 +137,13 @@ async function sendSnapshot() {
     ui.endpoint.value = destination.url; await storageSet({ endpoint: destination.url }); await readSession();
     if (!preview.tabs.length) throw new Error('No transferable HTTP(S) tabs were found.');
     const capturedAt = Date.now(); const device = settings.deviceName || 'Desktop browser';
+    const sourceSession = await getSourceSession();
     const body = {
-      browser: settings.browser, completeSnapshot: settings.scope === 'all' && !settings.excludePinned, sourceLabel: `${settings.browser} desktop`, deviceName: device, capturedAt,
+      browser: settings.browser,
+      completeSnapshot: settings.scope === 'all' && !settings.excludePinned && sourceSession.reliable,
+      sourceSessionId: sourceSession.id,
+      identityVersion: 1,
+      sourceLabel: `${settings.browser} desktop`, deviceName: device, capturedAt,
       tabs: preview.tabs.map(tab => {
         const group = preview.groups.get(tab.groupId);
         return { id:String(tab.id), url:tab.url, title:tab.title||'', group:group?.title || `Window ${tab.windowId}`, groupColor:group?.color || '', pinned:Boolean(tab.pinned), active:Boolean(tab.active), createdAt:tab.lastAccessed||capturedAt, lastSeenAt:capturedAt, deviceId:device };

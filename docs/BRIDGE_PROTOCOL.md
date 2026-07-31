@@ -2,16 +2,17 @@
 
 Default port: `48721`
 
-## Lifecycle
+## Trust boundary and lifecycle
 
-The bridge exists only during an active, foreground-visible, time-bounded session started by the user.
+The bridge exists only during an active, foreground-visible, time-bounded session started by the user. It binds exclusively to loopback and accepts only loopback clients.
 
-Endpoint examples:
+Canonical endpoint:
 
-- same device or ADB forward: `http://127.0.0.1:48721/api/v3/import`
-- trusted LAN: `http://<phone-private-address>:48721/api/v3/import`
+- same device or explicit ADB forward: `http://127.0.0.1:48721/api/v3/import`
 
-Compatibility routes `/api/v1/import` and `/api/v2/import` are accepted and pass through the same current parser and validation boundary.
+Direct LAN exposure is disabled. Private IP filtering and browser `Origin` checks are not peer authentication and do not provide transport confidentiality. Any future LAN mode requires explicit opt-in, authenticated TLS, peer/address allowlisting, certificate lifecycle management, and immediate token/peer revocation.
+
+Compatibility routes `/api/v1/import` and `/api/v2/import` pass through the same current parser and validation boundary.
 
 ## Health preflight
 
@@ -34,7 +35,18 @@ Representative response:
 }
 ```
 
-The Firefox and Chromium connectors expose a **Test bridge** action that requests optional host permission, calls `/health`, and reports API version and approximate minutes remaining. It sends no tab inventory.
+The connectors expose a **Test bridge** action that calls `/health` and sends no tab inventory.
+
+## Session-scoped source identity
+
+Browser tab IDs are unique only within a browser runtime and may be reused after restart. Connector payloads therefore include `sourceSessionId`.
+
+TabDeck persists its own UUID and a bounded opaque source ID derived from the session and external tab ID. The raw session ID is not stored. `firstSeenAt` is metadata only and is not part of identity equality.
+
+- retries in the same session resolve to the same source identity;
+- reused tab IDs in a later session resolve to a different identity;
+- legacy payloads remain importable but cannot authorize destructive complete-snapshot reconciliation;
+- `identityVersion` is currently `1`.
 
 ## Import request
 
@@ -45,12 +57,12 @@ X-TabDeck-Token: <64-hex-character token>
 X-TabDeck-Request-Id: <client-generated id>
 ```
 
-Representative payload:
-
 ```json
 {
   "browser": "Firefox Nightly",
   "completeSnapshot": true,
+  "sourceSessionId": "41a26c82-8c7b-4cad-b6ad-526f067b80d9",
+  "identityVersion": 1,
   "sourceLabel": "Firefox Nightly Android",
   "deviceName": "Pixel",
   "capturedAt": 1785400000000,
@@ -61,9 +73,7 @@ Representative payload:
       "url": "https://developer.android.com/",
       "title": "Android Developers",
       "group": "Research",
-      "groupColor": "blue",
       "pinned": true,
-      "active": false,
       "createdAt": 1785399000000,
       "lastSeenAt": 1785400000000
     }
@@ -71,49 +81,24 @@ Representative payload:
 }
 ```
 
-The top-level browser is authoritative for source identity. Tab-level browser fields from older clients are tolerated but cannot escape the supported browser mapping.
-
 ## Source reconciliation
 
-Source identity is:
+Canonical source equality is derived from connector/device/browser/profile/session/window/external-tab attributes. A later retry updates the same local record while preserving user-owned group, notes, tags, lifecycle state, and transfer counters.
 
-```text
-(source device, source browser, source tab id)
-```
-
-A later snapshot updates the same local record while preserving user-owned TabDeck group, notes, tags, status, and transfer counters.
-
-`completeSnapshot=true` means the connector asserts that the payload represents its complete chosen scope. A complete zero-tab payload is valid. Missing source records are kept or archived according to the user's synchronization policy. Partial/current-window/protected-pinned snapshots must set `completeSnapshot=false`.
+`completeSnapshot=true` is honored only when browser, device, source session, and every tab ID are provable. A complete zero-tab payload is valid. Partial/current-window/protected-pinned snapshots must set `completeSnapshot=false`.
 
 ## Validation and limits
 
-- session must be active and unexpired;
-- LAN clients must be loopback/private/link-local;
-- HTTP parser has bounded request line, header count/size, and body size;
-- only `GET /health`, `OPTIONS`, and supported `POST` import routes exist;
-- JSON content type is required for import;
-- token comparison is constant-time;
-- request IDs are bounded and sanitized;
-- strict UTF-8 is required;
-- maximum accepted tabs per request: 25,000;
-- only validated HTTP(S) URLs are stored;
-- invalid tab entries are rejected individually;
-- duplicate source IDs within one payload are coalesced deterministically;
-- request rate is limited per client/session.
-
-Oversized requests, invalid tokens, invalid origins, unsupported methods/paths, out-of-scope clients, expired sessions, invalid UTF-8, and rate limits receive 4xx responses. Every JSON response includes a short server request ID.
-
-## Response shape
-
-Successful imports return at least:
-
-```json
-{
-  "ok": true,
-  "imported": 123,
-  "rejected": 2,
-  "requestId": "9a23ce10"
-}
-```
-
-Clients must treat a non-2xx status as failure even if a response body cannot be parsed.
+- active, unexpired session;
+- loopback client only;
+- strict Origin policy for extension and loopback origins;
+- JSON content type for imports;
+- constant-time token comparison;
+- bounded request target, headers, body, sockets, timeouts, text fields, and tab count;
+- strict UTF-8;
+- maximum 25,000 tabs per request;
+- HTTP(S) URLs only;
+- invalid tab entries rejected individually;
+- duplicate source IDs coalesced deterministically;
+- per-client/session rate limit;
+- short server request ID in every JSON response.

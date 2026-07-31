@@ -974,16 +974,27 @@ fun ConnectScreen(
         item { ConnectorCard("Desktop Link + ADB", "Optional Windows-assisted inspection for Android Chromium builds exposing a DevTools socket.", "Conditional", Icons.Outlined.Devices) }
         item { ConnectorCard("Paste and file import", "Text, Markdown, HTML, JSON backup, or exported URL lists.", "Fallback", Icons.Outlined.FileOpen) }
 
-        item { SectionTitle("Bridge session", "Network scope, duration, endpoint, and credentials") }
+        item { SectionTitle("Bridge session", "Loopback-only transport, duration, endpoint, and revocable credentials") }
         item {
             ControlCard("Exposure", settings.bridgeScope.label, Icons.Outlined.Dns) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BridgeScope.entries.forEach { scope -> FilterChip(settings.bridgeScope == scope, { viewModel.setBridgeScope(scope) }, { Text(scope.label) }, enabled = !state.bridgeSession.enabled) }
+                    BridgeScope.entries.forEach { scope ->
+                        FilterChip(
+                            selected = settings.bridgeScope == scope,
+                            onClick = { viewModel.setBridgeScope(scope) },
+                            label = { Text(scope.label) },
+                            enabled = scope.available && !state.bridgeSession.enabled,
+                        )
+                    }
                 }
                 Text("Session duration: ${settings.bridgeSessionMinutes} minutes", style = MaterialTheme.typography.labelLarge)
                 Slider(value = settings.bridgeSessionMinutes.toFloat(), onValueChange = { viewModel.setBridgeSessionMinutes(it.roundToInt()) }, valueRange = 5f..120f, steps = 22, enabled = !state.bridgeSession.enabled)
                 KeyValueRow("Accepted requests", state.bridgeSession.acceptedRequests.toString())
                 KeyValueRow("Rejected requests", state.bridgeSession.rejectedRequests.toString())
+                Text(
+                    "Direct LAN exposure is disabled until TabDeck has authenticated TLS, peer allowlisting, and revocation. Desktop clients should use an ADB port forward to this loopback endpoint.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         item {

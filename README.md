@@ -20,7 +20,14 @@ The public release history starts at **v1.0.0**. Public product versions are ind
 
 Declared Android transfer targets include Chrome, Chrome Beta, Chrome Dev, Chrome Canary, Firefox, Firefox Nightly, Brave, Brave Beta, and Opera. Other browsers can still participate through Android sharing, paste, document import, and ordinary URL handling.
 
-Direct cross-app tab inspection is not a universal Android capability. TabDeck therefore uses explicit user-authorized routes.
+Direct cross-app tab inspection is not a universal Android capability. TabDeck therefore uses explicit user-authorized routes:
+
+1. Firefox Android WebExtension snapshots where the installed Firefox channel supports the required APIs.
+2. Android Sharesheet and document import for any browser.
+3. Desktop browser extensions that send snapshots to a short-lived authenticated bridge.
+4. Optional Windows Desktop Link using user-authorized ADB and a browser-exposed Chromium DevTools socket.
+
+TabDeck does not use root, AccessibilityService scraping, VPN interception, hidden APIs, notification scraping, or private browser database access.
 
 ## Repository layout
 
@@ -35,6 +42,34 @@ tools/                       Version, validation, test, and packaging tools
 version.properties           Authoritative public product version
 ```
 
+## Build locally
+
+Requirements: JDK 17 and Android SDK 36.
+
+```bash
+./bootstrap-wrapper.sh
+python3 tools/check_version.py
+bash tools/run_core_checks.sh
+python3 tools/validate_project.py
+./gradlew clean test lintDebug assembleDebug
+```
+
+Windows PowerShell:
+
+```powershell
+.\bootstrap-wrapper.ps1
+python tools\check_version.py
+.\gradlew.bat clean test lintDebug assembleDebug
+```
+
+The debug APK is written to `app/build/outputs/apk/debug/`.
+
+## Release
+
+A tag-driven GitHub Actions workflow builds and verifies a signed APK and AAB, packages all connectors and source archives deterministically, produces SHA-256 checksums and a machine-readable manifest, creates provenance attestations, uploads workflow artifacts, and publishes a GitHub Release.
+
+See [Build and release](docs/BUILD_AND_RELEASE.md) for required repository secrets and the exact release procedure.
+
 ## Documentation
 
 - [Installation](docs/INSTALLATION.md)
@@ -42,10 +77,19 @@ version.properties           Authoritative public product version
 - [Capability matrix](docs/CAPABILITY_MATRIX.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [UX and scope](docs/UX_AND_SCOPE.md)
-- [Deep improvement plan](docs/DEEP_IMPROVEMENT_PLAN.md) — delivery roadmap, architecture invariants, and acceptance criteria
+- [Deep improvement plan](docs/DEEP_IMPROVEMENT_PLAN.md) — implementation roadmap and acceptance gates
+- [Architecture decisions](docs/adr/README.md) — source identity, bridge trust, and release provenance
 - [Security design](docs/SECURITY.md)
 - [Bridge protocol](docs/BRIDGE_PROTOCOL.md)
 - [Testing](docs/TEST_PLAN.md)
 - [Build verification](docs/BUILD_VERIFICATION.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Release notes](docs/RELEASE_NOTES.md)
+
+## Privacy
+
+Tab data stays local unless the user explicitly shares, exports, or sends it through an enabled local bridge. Android backup is disabled. The live bridge token is excluded from portable backups. No telemetry SDK or cloud account is required.
+
+## Verification status
+
+The repository contains a pure Kotlin executable core harness and a static cross-component validator. Pull-request CI performs the full Android unit-test, lint, and debug-build gates. Tagged release CI additionally builds and verifies signed release artifacts before publication. See [Build verification](docs/BUILD_VERIFICATION.md) for the distinction between locally observed and CI-enforced evidence.

@@ -45,7 +45,7 @@
       <label>Phone endpoint<input id="endpoint" type="url" spellcheck="false" placeholder="http://192.168.1.20:48721/api/v3/import"></label>
       <label>Bridge token<input id="token" type="password" autocomplete="off" spellcheck="false"></label>
       <label class="toggle"><input id="rememberToken" type="checkbox"><span><b>Remember token</b><small>Off by default; otherwise paste it for each capture session</small></span></label>
-      <p>Enable Local network in TabDeck Connect, keep both devices on a trusted LAN, and stop the bridge after use.</p>
+      <p>TabDeck accepts loopback only. Use an explicit ADB port forward to 127.0.0.1:48721, and stop the bridge after use.</p>
       <div class="connection-actions">
         <button id="testConnection" class="secondary-button" type="button">Test bridge</button>
         <span>Checks reachability only; no tab data is sent.</span>

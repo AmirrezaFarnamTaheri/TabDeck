@@ -1,6 +1,8 @@
 import com.tabdeck.app.data.TabExportCodec
 import com.tabdeck.app.data.TabExportFormat
+import com.tabdeck.app.data.BackupInputClassifier
 import com.tabdeck.app.engine.DedupeEngine
+import com.tabdeck.app.engine.SourceIdentity
 import com.tabdeck.app.engine.UrlExtractor
 import com.tabdeck.app.engine.UrlNormalizer
 import com.tabdeck.app.model.BrowserId
@@ -80,6 +82,17 @@ fun main() {
 
     checkThat(BrowserId.fromWireName("Firefox Nightly") == BrowserId.FIREFOX_NIGHTLY, "browser wire mapping failed")
     checkThat(BrowserId.fromWireName("Brave Beta") == BrowserId.BRAVE_BETA, "browser beta mapping failed")
+    checkThat(BackupInputClassifier.classify("https://example.com") == BackupInputClassifier.Kind.NOT_BACKUP, "plain URL misclassified as backup")
+    checkThat(BackupInputClassifier.classify("{\"format\":\"tabdeck-backup\",\"tabs\":[") == BackupInputClassifier.Kind.BACKUP_SHAPED, "malformed backup shape not detected")
+
+    val firstSessionTab = SourceIdentity.encodeTabId("browser-session-a", "42")
+    val sameSessionTab = SourceIdentity.encodeTabId("browser-session-a", "42")
+    val nextSessionTab = SourceIdentity.encodeTabId("browser-session-b", "42")
+    checkThat(firstSessionTab == sameSessionTab, "session identity is not deterministic")
+    checkThat(firstSessionTab != nextSessionTab, "tab IDs were reused across browser sessions")
+    checkThat(SourceIdentity.isSessionScoped(firstSessionTab), "session-scoped ID was not recognized")
+    checkThat(SourceIdentity.encodeTabId(null, "42") == "42", "legacy source ID compatibility changed")
+    checkThat(SourceIdentity.encodeTabId("session", "tab\u0000  7").length <= SourceIdentity.MAX_OPAQUE_TAB_ID_LENGTH, "source ID exceeded storage bound")
 
     val exportTabs = tabs + TabItem(id = "formula", url = "https://safe.example", title = "=HYPERLINK(\"bad\")", notes = "<private>")
     val csv = TabExportCodec.encode(exportTabs, TabExportFormat.CSV)

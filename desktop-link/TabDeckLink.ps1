@@ -34,11 +34,27 @@ $script:Adb = Find-Adb
 $script:Tabs = [System.Collections.ObjectModel.ObservableCollection[object]]::new()
 $script:SocketMap = @{}
 $script:BridgePort = $null
+$script:SourceSessionId = ""
 $script:ForwardSerial = $null
+$script:OwnedForwards = [Collections.Generic.List[object]]::new()
+$script:StateDirectory = Join-Path $env:LOCALAPPDATA 'TabDeck'
+$script:ForwardStatePath = Join-Path $script:StateDirectory 'desktop-link-forwards.json'
 $script:TabsView = $null
 $script:MaxLiveActionTabs = 250
 $script:MaxBridgeTabs = 25000
 
+
+function Get-Sha256Hex {
+    param([Parameter(Mandatory)][string]$Value)
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Value)
+    $hash = [Security.Cryptography.SHA256]::HashData($bytes)
+    return [Convert]::ToHexString($hash).ToLowerInvariant()
+}
+
+function Test-SupportedDevToolsSocket {
+    param([Parameter(Mandatory)][string]$Socket)
+    return $Socket -match '(?i)(chrome|chromium|brave|edge|opera|vivaldi|sbrowser).*devtools_remote'
+}
 function Get-FreeTcpPort {
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $listener.Start()
@@ -83,14 +99,53 @@ function Get-DevToolsSockets {
     @($sockets | Where-Object { $_ } | Sort-Object -Unique)
 }
 
+function Save-ForwardState {
+    if ($script:OwnedForwards.Count -eq 0) {
+        Remove-Item -LiteralPath $script:ForwardStatePath -Force -ErrorAction SilentlyContinue
+        return
+    }
+    [void](New-Item -ItemType Directory -Path $script:StateDirectory -Force)
+    $temporary = "$($script:ForwardStatePath).tmp"
+    @($script:OwnedForwards) | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporary -Encoding utf8
+    Move-Item -LiteralPath $temporary -Destination $script:ForwardStatePath -Force
+}
+
+function Register-OwnedForward {
+    param([string]$Serial, [int]$LocalPort)
+    if (-not ($script:OwnedForwards | Where-Object { $_.Serial -eq $Serial -and $_.LocalPort -eq $LocalPort })) {
+        $script:OwnedForwards.Add([pscustomobject]@{ Serial = $Serial; LocalPort = $LocalPort })
+        Save-ForwardState
+    }
+}
+
 function Add-Forward {
     param([string]$Serial, [int]$LocalPort, [string]$Remote)
     [void](Invoke-Adb @('-s', $Serial, 'forward', "tcp:$LocalPort", $Remote))
+    Register-OwnedForward $Serial $LocalPort
 }
 
 function Remove-Forward {
     param([string]$Serial, [int]$LocalPort)
     [void](Invoke-Adb @('-s', $Serial, 'forward', '--remove', "tcp:$LocalPort") -AllowFailure)
+    $remaining = @($script:OwnedForwards | Where-Object { -not ($_.Serial -eq $Serial -and $_.LocalPort -eq $LocalPort) })
+    $script:OwnedForwards.Clear()
+    foreach ($entry in $remaining) { $script:OwnedForwards.Add($entry) }
+    Save-ForwardState
+}
+
+function Recover-StaleForwards {
+    if (-not (Test-Path -LiteralPath $script:ForwardStatePath)) { return }
+    try {
+        $stale = @(Get-Content -LiteralPath $script:ForwardStatePath -Raw | ConvertFrom-Json)
+        foreach ($entry in $stale) {
+            if ($entry.Serial -and $entry.LocalPort) {
+                [void](Invoke-Adb @('-s', [string]$entry.Serial, 'forward', '--remove', "tcp:$([int]$entry.LocalPort)") -AllowFailure)
+            }
+        }
+    } finally {
+        Remove-Item -LiteralPath $script:ForwardStatePath -Force -ErrorAction SilentlyContinue
+        $script:OwnedForwards.Clear()
+    }
 }
 
 function Invoke-JsonEndpoint {
@@ -134,6 +189,15 @@ function Get-CanonicalUrl {
     } catch { return $Url.Trim() }
 }
 
+
+function Remove-AllTabDeckForwards {
+    if (-not $script:ForwardSerial) { return }
+    foreach ($oldPort in @($script:SocketMap.Values)) { Remove-Forward $script:ForwardSerial ([int]$oldPort) }
+    if ($script:BridgePort) { Remove-Forward $script:ForwardSerial ([int]$script:BridgePort) }
+    $script:SocketMap.Clear()
+    $script:BridgePort = $null
+}
+
 function Refresh-Devices {
     $DeviceBox.Items.Clear()
     foreach ($serial in Get-DeviceSerials) { [void]$DeviceBox.Items.Add($serial) }
@@ -152,12 +216,18 @@ function Refresh-Tabs {
     $script:SocketMap.Clear()
     $DestinationBox.Items.Clear()
 
-    $sockets = @(Get-DevToolsSockets $serial | Select-Object -First 32)
+    $discoveredSockets = @(Get-DevToolsSockets $serial | Select-Object -First 64)
+    $sockets = @($discoveredSockets | Where-Object { Test-SupportedDevToolsSocket $_ } | Select-Object -First 32)
+    $unsupported = @($discoveredSockets | Where-Object { -not (Test-SupportedDevToolsSocket $_) })
+    if ($unsupported.Count -gt 0) {
+        Set-Status "Ignored $($unsupported.Count) unsupported or unrecognized DevTools socket(s): $($unsupported -join ', ')"
+    }
     if (-not $sockets) {
         throw 'No Chromium DevTools socket is visible. On the device, enable Developer options + USB debugging, open the target Chromium browser, and enable USB debugging / remote inspection where the browser requires it.'
     }
 
     $script:ForwardSerial = $serial
+    $script:SourceSessionId = Get-Sha256Hex ("{0}|{1}" -f $serial, (($sockets | Sort-Object) -join '|'))
     foreach ($socket in $sockets) {
         $port = Get-FreeTcpPort
         Add-Forward $serial $port "localabstract:$socket"
@@ -238,6 +308,26 @@ function Close-SelectedTabs {
     Refresh-Tabs
 }
 
+function Test-DestinationTarget {
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$TargetId,
+        [Parameter(Mandatory)][string]$ExpectedUrl
+    )
+    $expected = Get-CanonicalUrl $ExpectedUrl
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        try {
+            $targets = @(Invoke-JsonEndpoint "http://127.0.0.1:$Port/json")
+            $match = $targets | Where-Object {
+                ([string]$_.id -eq $TargetId) -and (Get-CanonicalUrl ([string]$_.url) -eq $expected)
+            } | Select-Object -First 1
+            if ($match) { return $true }
+        } catch { }
+        Start-Sleep -Milliseconds 150
+    }
+    return $false
+}
+
 function Transfer-SelectedTabs {
     $selected = @(Get-SelectedTabs -LiveAction)
     if (-not $selected) { throw 'Select tabs to transfer.' }
@@ -257,6 +347,9 @@ function Transfer-SelectedTabs {
             $encoded = [Uri]::EscapeDataString($tab.Url)
             $created = Invoke-JsonEndpoint "http://127.0.0.1:$port/json/new?$encoded" -Method PUT
             if (-not $created.id -or $created.url -notmatch '^https?://') { throw 'Destination did not confirm a page target.' }
+            if (-not (Test-DestinationTarget -Port $port -TargetId ([string]$created.id) -ExpectedUrl $tab.Url)) {
+                throw 'Destination target was not observable after creation; source remains open.'
+            }
             $opened++
             $verified.Add($tab)
             if ($opened % 20 -eq 0) { Set-Status "Opening tabs: $opened/$($selected.Count)"; Pump-Ui }
@@ -289,6 +382,8 @@ function Push-To-TabDeck {
         browser = 'Desktop Link'
         sourceLabel = 'Windows Desktop Link'
         deviceName = $serial
+        sourceSessionId = $script:SourceSessionId
+        identityVersion = 1
         tabs = @($selected | ForEach-Object {
             [ordered]@{
                 id = $_.TargetId
@@ -447,13 +542,8 @@ $TransferButton.Add_Click({ Invoke-UiAction { Transfer-SelectedTabs } })
 $CloseButton.Add_Click({ Invoke-UiAction { Close-SelectedTabs } })
 $ExportButton.Add_Click({ Invoke-UiAction { Export-SelectedTabs } })
 $PushButton.Add_Click({ Invoke-UiAction { Push-To-TabDeck } })
-$Window.Add_Closed({
-    $serial = $script:ForwardSerial
-    if ($serial) {
-        foreach ($port in $script:SocketMap.Values) { Remove-Forward $serial ([int]$port) }
-        if ($script:BridgePort) { Remove-Forward $serial ([int]$script:BridgePort) }
-    }
-})
+$Window.Add_Closed({ Remove-AllTabDeckForwards })
 
+Recover-StaleForwards
 Refresh-Devices
 [void]$Window.ShowDialog()

@@ -18,20 +18,25 @@ async function fetchWithTimeout(url, options, timeoutMs = 20000) {
   finally { clearTimeout(timeout); }
 }
 
+async function getSourceSession() {
+  const key = 'tabdeckSourceSessionId';
+  const sessionArea = browser.storage.session;
+  const area = sessionArea || browser.storage.local;
+  const stored = await area.get({ [key]: '' });
+  if (stored[key]) return { id: stored[key], reliable: Boolean(sessionArea) };
+  const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await area.set({ [key]: id });
+  return { id, reliable: Boolean(sessionArea) };
+}
+
 function endpointInfo(value) {
   const url = new URL(value);
   if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
   const host = url.hostname.toLowerCase();
-  const parts = host.split('.').map(Number);
-  const privateV4 = parts.length === 4 && parts.every(Number.isInteger) && (
-    parts[0] === 10 || parts[0] === 127 ||
-    (parts[0] === 192 && parts[1] === 168) ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-  );
   const ipv6 = host.replace(/^\[|\]$/g, '');
-  const privateV6 = ipv6 === '::1' || /^(fc|fd|fe[89ab])/i.test(ipv6);
-  if (!(host === 'localhost' || privateV4 || privateV6)) {
-    throw new Error('Use the localhost or private-LAN address shown by TabDeck.');
+  const loopback = host === 'localhost' || host === '127.0.0.1' || ipv6 === '::1';
+  if (!loopback) {
+    throw new Error('TabDeck bridge access is loopback-only. Use the on-device connector or an ADB port forward.');
   }
   if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
   url.pathname = '/api/v3/import';
@@ -168,8 +173,12 @@ async function sendSnapshot() {
     await readTabs();
     if (!preview.tabs.length) throw new Error('No transferable HTTP(S) tabs were found.');
     const capturedAt = Date.now();
+    const sourceSession = await getSourceSession();
     const body = {
-      browser: settings.browser, completeSnapshot: settings.scope === 'all' && !settings.excludePinned,
+      browser: settings.browser,
+      completeSnapshot: settings.scope === 'all' && !settings.excludePinned && sourceSession.reliable,
+      sourceSessionId: sourceSession.id,
+      identityVersion: 1,
       sourceLabel: `${settings.browser} Android`,
       deviceName: settings.deviceName || 'Android device',
       capturedAt,

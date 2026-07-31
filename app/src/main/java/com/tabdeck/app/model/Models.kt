@@ -146,9 +146,9 @@ enum class SyncMissingPolicy(val label: String, val description: String) {
     ARCHIVE("Archive missing tabs", "For explicitly complete snapshots, archive previously seen source tabs that are now absent"),
 }
 
-enum class BridgeScope(val label: String) {
-    THIS_DEVICE("This device only"),
-    LOCAL_NETWORK("Local network"),
+enum class BridgeScope(val label: String, val available: Boolean) {
+    THIS_DEVICE("This device only (loopback)", true),
+    LOCAL_NETWORK("Local network (requires authenticated TLS; unavailable)", false),
 }
 
 enum class TransferPacing(val label: String, val delayMs: Long) {

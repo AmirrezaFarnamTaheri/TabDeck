@@ -15,7 +15,7 @@ A Manifest V3 desktop extension for Chrome, Chrome Beta/Dev/Canary, Brave, Opera
 
 ## Load unpacked
 
-1. Start a **Local network** bridge in TabDeck on a trusted network.
+1. Start the loopback bridge in TabDeck. For a desktop browser, create an explicit ADB forward from the host to device port 48721.
 2. Copy the phone's LAN endpoint and token.
 3. Open the desktop browser's extension management page, enable developer mode, and **Load unpacked** this folder.
 4. Inspect the popup summary and send the session.

@@ -335,6 +335,8 @@ def validate_release_contracts() -> None:
     repository = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt").read_text(encoding="utf-8")
     view_model = (ROOT / "app/src/main/java/com/tabdeck/app/TabDeckViewModel.kt").read_text(encoding="utf-8")
     export_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabExportCodec.kt").read_text(encoding="utf-8")
+    snapshot_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt").read_text(encoding="utf-8")
+    bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")
     checks = {
         "bridge API v3": 'request.path == "/api/v3/import"' in bridge and '.put("version", 3)' in bridge,
         "bridge compatibility": all(f'/api/v{version}/import' in bridge for version in (1, 2, 3)),
@@ -349,6 +351,9 @@ def validate_release_contracts() -> None:
         "human-readable exports": all(token in export_codec for token in ("MARKDOWN", "CSV", "NETSCAPE_BOOKMARKS", "csvCell")),
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,
         "UTF-8 bounded share import": "fun utf8Prefix" in view_model and "MAX_IMPORT_DOCUMENT_BYTES" in view_model,
+        "typed backup classification": "sealed interface DecodeResult" in snapshot_codec and "decodeClassified" in view_model,
+        "loopback-only bridge": "LOOPBACK_ENDPOINT" in bridge_network and "0.0.0.0" not in bridge,
+        "session-scoped source identity": "SourceIdentity.encodeTabId" in (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8"),
     }
     for label, passed in checks.items():
         if not passed:
@@ -366,7 +371,25 @@ def validate_release_contracts() -> None:
             fail(f"Extension endpoint compatibility is incomplete in {folder.relative_to(ROOT)}")
         if "testBridgeConnection" not in popup or "'/health'" not in popup:
             fail(f"Extension bridge preflight is missing in {folder.relative_to(ROOT)}")
-    ok("Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, and widget contracts")
+        if "sourceSessionId" not in popup or "getSourceSession" not in popup:
+            fail(f"Extension session-scoped tab identity is missing in {folder.relative_to(ROOT)}")
+    parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+    identity = (ROOT / "app/src/main/java/com/tabdeck/app/engine/SourceIdentity.kt").read_text(encoding="utf-8")
+    if "SourceIdentity.encodeTabId" not in parser or "sourceSessionId" not in parser:
+        fail("Bridge parser is missing session-scoped source identity")
+    if "sid1:" not in identity or "isSessionScoped" not in identity:
+        fail("Source identity codec contract is incomplete")
+    for required_file in (
+        ROOT / "tools/performance_budget.py",
+        ROOT / "tools/performance-budgets.json",
+        ROOT / "desktop-link/Test-TabDeckLink.ps1",
+        ROOT / "docs/adr/0001-durable-source-identity.md",
+        ROOT / "docs/adr/0002-loopback-bridge-trust-boundary.md",
+        ROOT / "docs/adr/0003-release-provenance.md",
+    ):
+        if not required_file.is_file():
+            fail(f"Missing verification contract: {required_file.relative_to(ROOT)}")
+    ok("Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, widget, and source-identity contracts")
 
 
 def validate_workflow_contracts() -> None:
@@ -403,9 +426,20 @@ def validate_workflow_contracts() -> None:
         "actions/upload-artifact@v7",
         "actions/attest@v4",
         "gh release create",
+        "environment: release",
+        "artifact-metadata: write",
+        "TABDECK_RELEASE_CERT_SHA256",
+        "git rev-list -n 1",
+        "keytool -printcert -jarfile",
+        "--source-commit",
+        "--signing-cert-sha256",
     ):
         if token not in release:
             fail(f"Release workflow contract missing: {token}")
+    packager = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
+    for token in ('"schemaVersion": 2', '"sourceCommit"', '"releaseTag"', '"signingCertificateSha256"'):
+        if token not in packager:
+            fail(f"Release manifest provenance contract missing: {token}")
     ok("Validated CI and signed-release workflow contracts")
 
 

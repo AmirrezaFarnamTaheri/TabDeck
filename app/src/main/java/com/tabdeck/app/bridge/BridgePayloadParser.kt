@@ -1,5 +1,6 @@
 package com.tabdeck.app.bridge
 
+import com.tabdeck.app.engine.SourceIdentity
 import com.tabdeck.app.engine.UrlNormalizer
 import com.tabdeck.app.model.BrowserId
 import com.tabdeck.app.model.TabItem
@@ -24,6 +25,10 @@ object BridgePayloadParser {
         val sourceLabel = cleanText(root.optString("sourceLabel", sourceBrowser.displayName), 120)
             .ifBlank { sourceBrowser.displayName }
         val deviceName = cleanText(root.optString("deviceName", root.optString("deviceId")), 120)
+        val sourceSessionId = cleanText(
+            root.optString("sourceSessionId", root.optString("sessionId")),
+            MAX_SOURCE_SESSION_ID_LENGTH,
+        )
         val sessionGroup = cleanText(root.optString("group"), 120)
         val capturedAt = safeTimestamp(root.optLong("capturedAt", now), now)
         val tabArray = root.optJSONArray("tabs") ?: JSONArray()
@@ -35,7 +40,8 @@ object BridgePayloadParser {
                 val itemBrowserWire = item.optString("browser")
                 val itemBrowser = if (itemBrowserWire.isBlank()) sourceBrowser else BrowserId.fromWireName(itemBrowserWire)
                 val itemDevice = cleanText(item.optString("deviceId", deviceName), 120)
-                val sourceTabId = cleanText(item.optString("id", item.optString("tabId")), 160)
+                val rawSourceTabId = cleanText(item.optString("id", item.optString("tabId")), 160)
+                val sourceTabId = SourceIdentity.encodeTabId(sourceSessionId, rawSourceTabId)
                 val group = cleanText(item.optString("group", sessionGroup), 120)
                 val createdAt = safeTimestamp(item.optLong("createdAt", capturedAt), now)
                 val lastSeenAt = safeTimestamp(item.optLong("lastSeenAt", capturedAt), now)
@@ -58,9 +64,14 @@ object BridgePayloadParser {
         }
 
         val requestedCompleteSnapshot = root.optBoolean("completeSnapshot", false)
-        val identityIsProvable = sourceBrowser.isLaunchTarget && deviceName.isNotBlank() && parsed.all { tab ->
-            tab.browser == sourceBrowser && tab.sourceDevice == deviceName && tab.sourceTabId.isNotBlank()
-        }
+        val identityIsProvable = sourceBrowser.isLaunchTarget &&
+            deviceName.isNotBlank() &&
+            sourceSessionId.isNotBlank() &&
+            parsed.all { tab ->
+                tab.browser == sourceBrowser &&
+                    tab.sourceDevice == deviceName &&
+                    SourceIdentity.isSessionScoped(tab.sourceTabId)
+            }
         return ParsedImport(
             tabs = parsed,
             sourceLabel = sourceLabel,
@@ -79,6 +90,7 @@ object BridgePayloadParser {
     private fun safeTimestamp(value: Long, now: Long): Long = value.coerceIn(MIN_REASONABLE_EPOCH_MS, now + MAX_FUTURE_SKEW_MS)
 
     private const val MAX_TABS_PER_IMPORT = 25_000
+    private const val MAX_SOURCE_SESSION_ID_LENGTH = 256
     private const val MIN_REASONABLE_EPOCH_MS = 946_684_800_000L // 2000-01-01
     private const val MAX_FUTURE_SKEW_MS = 86_400_000L
 }
