@@ -133,6 +133,7 @@ jobs:
           bash tools/run_core_checks.sh
           python3 tools/validate_project.py --report build-validation-report.txt
           python3 tools/validate_simple_release.py
+          python3 tools/validate_connector_dom.py
           python3 tools/performance_budget.py --validate-config
           pwsh -NoLogo -NoProfile -File desktop-link/Test-TabDeckLink.ps1
 
