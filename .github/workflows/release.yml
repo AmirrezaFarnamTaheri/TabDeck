@@ -53,6 +53,7 @@ jobs:
       - name: Check out release source
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || steps.release_tag.outputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 
