@@ -1,4 +1,4 @@
-// bridge-runtime.js accepts and canonicalizes /api/v2/import and /api/v3/import.
+// bridge-runtime.js accepts and canonicalizes /api/v1/import, /api/v2/import, and /api/v3/import.
 const $ = selector => document.querySelector(selector);
 const ui = {
   endpoint: $('#endpoint'), token: $('#token'), browser: $('#browser'), deviceName: $('#deviceName'),

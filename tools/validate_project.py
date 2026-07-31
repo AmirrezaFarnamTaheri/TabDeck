@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 from versioning import load_version
 
@@ -344,6 +345,8 @@ def validate_release_contracts() -> None:
     export_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabExportCodec.kt").read_text(encoding="utf-8")
     bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")
     bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+    endpoint_match = re.search(r'const val LOOPBACK_ENDPOINT\s*=\s*"([^"]+)"', bridge_network)
+    endpoint_host = urlsplit(endpoint_match.group(1)).hostname if endpoint_match else None
     checks = {
         "bridge API v3": 'request.path == "/api/v3/import"' in bridge and '.put("version", 3)' in bridge,
         "bridge compatibility": all(f'/api/v{version}/import' in bridge for version in (1, 2, 3)),
@@ -359,7 +362,7 @@ def validate_release_contracts() -> None:
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,
         "UTF-8 bounded share import": "fun utf8Prefix" in view_model and "MAX_IMPORT_DOCUMENT_BYTES" in view_model,
         "typed backup classification": "sealed interface DecodeResult" in backup and "decodeClassified" in view_model,
-        "loopback-only bridge": "LOOPBACK_ENDPOINT" in bridge_network and "0.0.0.0" not in bridge,
+        "loopback-only bridge": endpoint_host in {"127.0.0.1", "localhost", "::1"} and "0.0.0.0" not in bridge,
         "session-scoped source identity": "SourceIdentity.encodeTabId" in bridge_parser,
         "identity-version reconciliation guard": "identityVersion == CURRENT_IDENTITY_VERSION" in bridge_parser,
     }

@@ -15,8 +15,13 @@ A Manifest V3 desktop extension for Chrome, Chrome Beta/Dev/Canary, Brave, Opera
 
 ## Load unpacked
 
-1. Start the loopback bridge in TabDeck. For a desktop browser, create an explicit ADB forward from the host to device port 48721.
-2. Copy the forwarded loopback endpoint and token.
+1. Start the loopback bridge in TabDeck. For a desktop browser, create the host-to-device port forward:
+
+   ```bash
+   adb forward tcp:48721 tcp:48721
+   ```
+
+2. Use `http://127.0.0.1:48721/api/v3/import` as the forwarded loopback endpoint and copy the token.
 3. Open the desktop browser's extension management page, enable developer mode, and **Load unpacked** this folder.
 4. Inspect the popup summary and send the session.
 
