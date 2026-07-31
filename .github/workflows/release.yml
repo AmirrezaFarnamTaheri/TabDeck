@@ -15,6 +15,7 @@ permissions:
   contents: write
   id-token: write
   attestations: write
+  artifact-metadata: write
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -30,7 +31,8 @@ jobs:
   release:
     name: Build, verify, attest, and publish
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    environment: release
+    timeout-minutes: 75
 
     steps:
       - name: Resolve release tag
@@ -54,18 +56,22 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Verify release source and tag state
+      - name: Bind release to immutable source
+        id: source
         shell: bash
         env:
           TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
           set -euo pipefail
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          test -n "${SOURCE_COMMIT}"
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             test "${GITHUB_REF_TYPE}" = "tag"
-            test "$(git rev-list -n 1 "${TAG}")" = "$(git rev-parse HEAD)"
+            test "$(git rev-list -n 1 "${TAG}")" = "${SOURCE_COMMIT}"
           elif git show-ref --verify --quiet "refs/tags/${TAG}"; then
-            test "$(git rev-list -n 1 "${TAG}")" = "$(git rev-parse HEAD)"
+            test "$(git rev-list -n 1 "${TAG}")" = "${SOURCE_COMMIT}"
           fi
+          echo "sha=${SOURCE_COMMIT}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -104,31 +110,42 @@ jobs:
         run: python3 tools/check_version.py --tag "${{ steps.release_tag.outputs.tag }}"
 
       - name: Materialize and validate release signing key
+        id: signing_key
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.TABDECK_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.TABDECK_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.TABDECK_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.TABDECK_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ secrets.TABDECK_RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
           : "${KEYSTORE_BASE64:?TABDECK_KEYSTORE_BASE64 is missing}"
           : "${KEYSTORE_PASSWORD:?TABDECK_KEYSTORE_PASSWORD is missing}"
           : "${KEY_ALIAS:?TABDECK_KEY_ALIAS is missing}"
           : "${KEY_PASSWORD:?TABDECK_KEY_PASSWORD is missing}"
+          : "${EXPECTED_CERT_SHA256:?TABDECK_RELEASE_CERT_SHA256 is missing}"
           KEYSTORE_PATH="${RUNNER_TEMP}/tabdeck-release.jks"
           printf '%s' "${KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
           chmod 600 "${KEYSTORE_PATH}"
           test -s "${KEYSTORE_PATH}"
-          keytool -list \
+          NORMALIZED_EXPECTED="$(printf '%s' "${EXPECTED_CERT_SHA256}" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
+          [[ "${NORMALIZED_EXPECTED}" =~ ^[0-9A-F]{64}$ ]]
+          KEYSTORE_CERT="$(keytool -list -v \
             -keystore "${KEYSTORE_PATH}" \
             -storepass "${KEYSTORE_PASSWORD}" \
-            -alias "${KEY_ALIAS}" >/dev/null
+            -alias "${KEY_ALIAS}" | awk -F': ' '/SHA256:/{gsub(":", "", $2); print toupper($2); exit}')"
+          test "${KEYSTORE_CERT}" = "${NORMALIZED_EXPECTED}"
+          echo "fingerprint=${NORMALIZED_EXPECTED}" >> "${GITHUB_OUTPUT}"
 
       - name: Run validation
+        shell: bash
         run: |
+          set -euo pipefail
           bash tools/run_core_checks.sh
           python3 tools/validate_project.py --report build-validation-report.txt
+          python3 tools/performance_budget.py --validate-config
+          pwsh -NoLogo -NoProfile -File desktop-link/Test-TabDeckLink.ps1
 
       - name: Build signed Android release
         env:
@@ -138,8 +155,11 @@ jobs:
           TABDECK_KEY_PASSWORD: ${{ secrets.TABDECK_KEY_PASSWORD }}
         run: ./gradlew --no-daemon --stacktrace clean test lintRelease assembleRelease bundleRelease
 
-      - name: Verify Android signatures
+      - name: Verify Android signatures and signing identity
+        id: verify_signing
         shell: bash
+        env:
+          EXPECTED_CERT_SHA256: ${{ steps.signing_key.outputs.fingerprint }}
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
@@ -148,24 +168,50 @@ jobs:
           test -s "${APK}"
           test -s "${AAB}"
           test -x "${APKSIGNER}"
-          "${APKSIGNER}" verify --verbose --print-certs "${APK}"
-          jarsigner -verify -strict "${AAB}"
+          "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/zipalign" -c -v 4 "${APK}"
+          APK_CERT="$(${APKSIGNER} verify --verbose --print-certs "${APK}" | awk -F': ' '/certificate SHA-256 digest:/{gsub(":", "", $2); print toupper($2); exit}')"
+          jarsigner -verify -strict -certs "${AAB}"
+          AAB_CERT="$(keytool -printcert -jarfile "${AAB}" | awk -F': ' '/SHA256:/{gsub(":", "", $2); print toupper($2); exit}')"
+          test -n "${APK_CERT}"
+          test -n "${AAB_CERT}"
+          test "${APK_CERT}" = "${EXPECTED_CERT_SHA256}"
+          test "${AAB_CERT}" = "${EXPECTED_CERT_SHA256}"
+          echo "fingerprint=${EXPECTED_CERT_SHA256}" >> "${GITHUB_OUTPUT}"
 
       - name: Package deterministic release assets
         shell: bash
+        env:
+          TAG: ${{ steps.release_tag.outputs.tag }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.sha }}
+          SIGNING_CERT_SHA256: ${{ steps.verify_signing.outputs.fingerprint }}
         run: |
           set -euo pipefail
-          python3 tools/package_release.py --require-android-artifacts --output-dir dist
+          python3 tools/package_release.py \
+            --require-android-artifacts \
+            --output-dir dist \
+            --release-tag "${TAG}" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --signing-cert-sha256 "${SIGNING_CERT_SHA256}"
           cd dist
           sha256sum -c TabDeck-v*-SHA256.txt
+          python3 - <<'PY'
+          import glob, json, os
+          path = glob.glob('TabDeck-v*-release-manifest.json')
+          assert len(path) == 1
+          manifest = json.load(open(path[0], encoding='utf-8'))
+          assert manifest['provenance']['sourceCommit'] == os.environ['SOURCE_COMMIT']
+          assert manifest['provenance']['releaseTag'] == os.environ['TAG']
+          assert manifest['provenance']['signingCertificateSha256'] == os.environ['SIGNING_CERT_SHA256']
+          PY
 
       - name: Upload release assets to workflow run
         uses: actions/upload-artifact@v7
         with:
-          name: TabDeck-${{ steps.release_tag.outputs.tag }}
+          name: TabDeck-${{ steps.release_tag.outputs.tag }}-${{ steps.source.outputs.sha }}
           path: dist/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
+          compression-level: 0
 
       - name: Attest release assets
         uses: actions/attest@v4
@@ -177,24 +223,29 @@ jobs:
         shell: bash
         env:
           TAG: ${{ steps.release_tag.outputs.tag }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           if git show-ref --verify --quiet "refs/tags/${TAG}"; then
-            test "$(git rev-list -n 1 "${TAG}")" = "$(git rev-parse HEAD)"
+            test "$(git rev-list -n 1 "${TAG}")" = "${SOURCE_COMMIT}"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "${TAG}" -m "TabDeck ${TAG}"
+            git tag -a "${TAG}" "${SOURCE_COMMIT}" -m "TabDeck ${TAG}"
             git push origin "refs/tags/${TAG}"
           fi
+          git fetch --force --tags
+          test "$(git rev-list -n 1 "${TAG}")" = "${SOURCE_COMMIT}"
 
       - name: Publish GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release_tag.outputs.tag }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
+          test "$(git rev-list -n 1 "${TAG}")" = "${SOURCE_COMMIT}"
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" dist/* --clobber
             gh release edit "${TAG}" --title "TabDeck ${TAG}" --notes-file docs/RELEASE_NOTES.md
