@@ -348,6 +348,14 @@ private fun RecentTabCard(tab: TabItem, onOpen: () -> Unit) {
     }
 }
 
+private data class MetricSpec(
+    val label: String,
+    val value: Int,
+    val helper: String,
+    val icon: ImageVector,
+    val action: () -> Unit,
+)
+
 @Composable
 private fun ActivityCard(icon: ImageVector, title: String, body: String) {
     OutlinedCard(shape = RoundedCornerShape(16.dp)) {

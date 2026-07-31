@@ -22,15 +22,15 @@ object BridgePayloadParser {
         val root = JSONObject(raw)
         val now = System.currentTimeMillis()
         val sourceBrowser = BrowserId.fromWireName(root.optString("browser"))
-        val sourceLabel = cleanText(root.optString("sourceLabel", sourceBrowser.displayName))
+        val sourceLabel = cleanText(root.optString("sourceLabel", sourceBrowser.displayName), 120)
             .ifBlank { sourceBrowser.displayName }
-        val deviceName = cleanText(root.optString("deviceName", root.optString("deviceId")))
-        val sourceSessionId = cleanIdentifier(
+        val deviceName = cleanText(root.optString("deviceName", root.optString("deviceId")), 120)
+        val sourceSessionId = cleanText(
             root.optString("sourceSessionId", root.optString("sessionId")),
             MAX_SOURCE_SESSION_ID_LENGTH,
         )
         val identityVersion = root.optInt("identityVersion", 0)
-        val sessionGroup = cleanText(root.optString("group"))
+        val sessionGroup = cleanText(root.optString("group"), 120)
         val capturedAt = safeTimestamp(root.optLong("capturedAt", now), now)
         val tabArray = root.optJSONArray("tabs") ?: JSONArray()
 
@@ -40,17 +40,17 @@ object BridgePayloadParser {
                 val url = UrlNormalizer.sanitizeWebUrl(item.optString("url")) ?: continue
                 val itemBrowserWire = item.optString("browser")
                 val itemBrowser = if (itemBrowserWire.isBlank()) sourceBrowser else BrowserId.fromWireName(itemBrowserWire)
-                val itemDevice = cleanText(item.optString("deviceId", deviceName))
-                val rawSourceTabId = cleanIdentifier(item.optString("id", item.optString("tabId")), 160)
+                val itemDevice = cleanText(item.optString("deviceId", deviceName), 120)
+                val rawSourceTabId = cleanText(item.optString("id", item.optString("tabId")), 160)
                 val sourceTabId = SourceIdentity.encodeTabId(sourceSessionId, rawSourceTabId)
-                val group = cleanText(item.optString("group", sessionGroup))
+                val group = cleanText(item.optString("group", sessionGroup), 120)
                 val createdAt = safeTimestamp(item.optLong("createdAt", capturedAt), now)
                 val lastSeenAt = safeTimestamp(item.optLong("lastSeenAt", capturedAt), now)
 
                 add(
                     TabItem(
                         url = url,
-                        title = cleanText(item.optString("title")),
+                        title = cleanText(item.optString("title"), 500),
                         browser = itemBrowser,
                         sourceGroup = group,
                         assignedGroup = group.ifBlank { "Inbox" },
