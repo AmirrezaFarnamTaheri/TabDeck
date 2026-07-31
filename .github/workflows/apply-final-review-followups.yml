@@ -1,0 +1,70 @@
+name: Apply final PR 6 review follow-ups
+
+on:
+  pull_request:
+    branches:
+      - codex/deep-improvement-plan
+    paths:
+      - .github/workflows/apply-final-review-followups.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-final-pr6-followups
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Patch, verify, and publish final follow-ups
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out remediation source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: remediation-source
+          persist-credentials: false
+
+      - name: Check out PR 6 branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/deep-improvement-plan
+          fetch-depth: 0
+          path: target
+          persist-credentials: false
+
+      - name: Apply final review changes
+        run: python3 remediation-source/tools/apply_final_review_followups.py target
+
+      - name: Verify final review changes
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/validate_project.py
+          python3 tools/validate_project.py --report build-validation-report.txt
+          node --check extensions/chromium-desktop/popup.js
+          node --check extensions/firefox-android/popup.js
+          grep -Fq 'adb forward tcp:48721 tcp:48721' extensions/chromium-desktop/README.md
+          grep -Fq 'http://127.0.0.1:48721/api/v3/import' extensions/chromium-desktop/README.md
+
+      - name: Commit and push verified changes
+        working-directory: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add extensions/chromium-desktop/README.md \
+            extensions/chromium-desktop/popup.js \
+            extensions/firefox-android/popup.js \
+            tools/validate_project.py \
+            build-validation-report.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Address final PR review follow-ups'
+          AUTH="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${AUTH}" push origin HEAD:codex/deep-improvement-plan
