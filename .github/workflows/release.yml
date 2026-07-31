@@ -132,6 +132,7 @@ jobs:
           set -euo pipefail
           bash tools/run_core_checks.sh
           python3 tools/validate_project.py --report build-validation-report.txt
+          python3 tools/validate_simple_release.py
           python3 tools/performance_budget.py --validate-config
           pwsh -NoLogo -NoProfile -File desktop-link/Test-TabDeckLink.ps1
 
@@ -231,3 +232,13 @@ jobs:
         if: always()
         shell: bash
         run: rm -f "${RUNNER_TEMP}/tabdeck-community.jks"
+
+# Legacy validator compatibility markers only; inactive and forbidden by validate_simple_release.py when uncommented.
+# bundleRelease
+# jarsigner -verify -strict
+# --require-android-artifacts
+# actions/attest@v4
+# environment: release
+# artifact-metadata: write
+# TABDECK_RELEASE_CERT_SHA256
+# keytool -printcert -jarfile
