@@ -28,11 +28,45 @@ class TabQueryBuilderTest {
     }
 
     @Test
+    fun acceptsPagingQueryAtPortableSqliteBindLimit() {
+        val query = LibraryQuery(
+            statuses = emptySet(),
+            groups = (0 until 997).mapTo(linkedSetOf()) { "group-$it" },
+        )
+
+        TabQueryBuilder.requireSupported(query)
+    }
+
+    @Test
+    fun rejectsPagingQueryAbovePortableSqliteBindLimit() {
+        val query = LibraryQuery(
+            statuses = emptySet(),
+            groups = (0 until 998).mapTo(linkedSetOf()) { "group-$it" },
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            TabQueryBuilder.requireSupported(query)
+        }
+    }
+
+    @Test
     fun rejectsOversizedCombinedFilterCollectionsBeforeSqlGeneration() {
         val query = LibraryQuery(groups = (0 until 998).mapTo(linkedSetOf()) { "group-$it" })
 
         assertThrows(IllegalArgumentException::class.java) {
             TabQueryBuilder.requireSupported(query)
         }
+    }
+
+    @Test
+    fun countQueryCanUseTheFullPortableBindBudget() {
+        val query = LibraryQuery(
+            statuses = emptySet(),
+            groups = (0 until 999).mapTo(linkedSetOf()) { "group-$it" },
+        )
+
+        val built = TabQueryBuilder.count(query, staleBefore = 0L)
+
+        assertEquals(999, built.argCount)
     }
 }

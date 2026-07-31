@@ -232,6 +232,7 @@ class TabDeckRepository(context: Context) {
 
     fun pagedTabs(query: LibraryQuery): Flow<PagingData<TabItem>> {
         val stableQuery = sanitizeQuery(query)
+        TabQueryBuilder.requireSupported(stableQuery)
         return settingsStore.settings.flatMapLatest { settings ->
             Pager(
                 config = PagingConfig(
@@ -859,17 +860,13 @@ class TabDeckRepository(context: Context) {
         return result
     }
 
-    private fun sanitizeQuery(query: LibraryQuery): LibraryQuery {
-        val sanitized = query.copy(
-            search = query.search.singleLine(),
-            groups = query.groups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-            sourceDevices = query.sourceDevices.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-            sourceGroups = query.sourceGroups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-            tags = query.tags.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
-        )
-        TabQueryBuilder.requireSupported(sanitized)
-        return sanitized
-    }
+    private fun sanitizeQuery(query: LibraryQuery): LibraryQuery = query.copy(
+        search = query.search.singleLine(),
+        groups = query.groups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        sourceDevices = query.sourceDevices.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        sourceGroups = query.sourceGroups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        tags = query.tags.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+    )
 
     private fun staleBefore(settings: AppSettings): Long =
         System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.staleAfterDays.coerceAtLeast(1).toLong())

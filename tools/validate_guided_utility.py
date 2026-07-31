@@ -73,7 +73,8 @@ require("MAX_SET_ITEMS" not in query_codec, "saved views must preserve all selec
 require("MAX_RULES" not in regex_engine, "rule evaluation must not silently ignore later rules")
 require("MAX_PATTERN_LENGTH" in regex_engine, "rule validation must retain a bounded regex pattern size")
 require("SQLITE_MAX_BIND_ARGUMENTS" in query_builder and "requireSupported" in query_builder, "query construction must enforce SQLite's bind-argument boundary")
-require("TabQueryBuilder.requireSupported(sanitized)" in repository, "sanitized library queries must be validated before SQL generation")
+require("ROOM_PAGING_BIND_ARGUMENTS = 2" in query_builder, "Room paging queries must reserve LIMIT and OFFSET bind arguments")
+require("TabQueryBuilder.requireSupported(stableQuery)" in repository, "sanitized paging queries must be validated before Room adds paging binds")
 for cap in ("MAX_TAB_TITLE_CHARS", "MAX_NOTES_CHARS", "MAX_TAG_TEXT_BUDGET", "MAX_SOURCE_TAB_ID_CHARS"):
     require(cap in repository, f"incoming tab rows must retain the persistence safety boundary: {cap}")
 require("MAX_SESSION_MINUTES = 6 * 60" in bridge_network, "bridge sessions must reflect Android's six-hour dataSync limit")

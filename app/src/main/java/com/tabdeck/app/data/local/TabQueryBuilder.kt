@@ -18,7 +18,7 @@ object TabQueryBuilder {
             query = query,
             cleanTagCount = cleanTags(query).size,
             searchTokenCount = searchTokens(query.search).size,
-            includeLimit = true,
+            additionalBindArguments = ROOM_PAGING_BIND_ARGUMENTS,
         )
     }
 
@@ -38,7 +38,7 @@ object TabQueryBuilder {
             query = query,
             cleanTagCount = cleanTags.size,
             searchTokenCount = tokens.size,
-            includeLimit = !countOnly && limit != null && limit > 0,
+            additionalBindArguments = if (!countOnly && limit != null && limit > 0) 1 else 0,
         )
 
         if (query.statuses.isNotEmpty()) {
@@ -125,8 +125,9 @@ object TabQueryBuilder {
         query: LibraryQuery,
         cleanTagCount: Int,
         searchTokenCount: Int,
-        includeLimit: Boolean,
+        additionalBindArguments: Int,
     ) {
+        require(additionalBindArguments >= 0) { "Additional bind argument count cannot be negative" }
         val required = query.statuses.size +
             query.browsers.size +
             query.groups.size +
@@ -135,7 +136,7 @@ object TabQueryBuilder {
             cleanTagCount +
             (if (query.staleOnly) 1 else 0) +
             (searchTokenCount * SEARCH_COLUMNS.size) +
-            (if (includeLimit) 1 else 0)
+            additionalBindArguments
         require(required <= SQLITE_MAX_BIND_ARGUMENTS) {
             "Query requires $required SQLite bind arguments; the supported maximum is $SQLITE_MAX_BIND_ARGUMENTS. " +
                 "Reduce the combined number of filters or unique search terms."
@@ -148,5 +149,6 @@ object TabQueryBuilder {
         .replace("_", "\\_")
 
     private val SEARCH_COLUMNS = listOf("title", "url", "host", "notes", "tagsJson", "sourceGroup", "assignedGroup")
+    private const val ROOM_PAGING_BIND_ARGUMENTS = 2
     private const val SQLITE_MAX_BIND_ARGUMENTS = 999
 }
