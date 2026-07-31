@@ -15,10 +15,17 @@ $required = @(
     'function Test-SupportedDevToolsSocket',
     'sourceSessionId = $script:SourceSessionId',
     'Destination target was not observable after creation; source remains open.',
-    'Processed tabs: $processed/$($selected.Count) ($opened opened)'
+    'Processed tabs: $processed/$($selected.Count) ($opened opened)',
+    'Capture workspace',
+    'Send selected tabs',
+    'function Split-BridgeBatches',
+    'function Update-Summary'
 )
 foreach ($needle in $required) {
     if (-not $text.Contains($needle)) { $errors.Add("Missing safety contract: $needle") }
+}
+if ($text -match '(?i)MaxBridgeTabs|MaxLiveActionTabs|capped at|Bridge imports are capped') {
+    $errors.Add('Desktop Link still contains an arbitrary tab-count cap.')
 }
 if ($text -match '(?i)dotnet\s+(run|publish)|Microsoft\.NETCore\.App') {
     $errors.Add('Portable PowerShell fallback unexpectedly requires a machine-wide .NET application runtime.')

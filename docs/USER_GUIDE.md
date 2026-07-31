@@ -1,74 +1,56 @@
 # User guide
 
-## 1. Choose an acquisition route
+## 1. Start from Home
 
-Use the least-complex route that captures the needed tabs:
+Home answers three questions: how many tabs are saved, what needs attention, and what to do next. Use **Capture tabs**, **Browse tabs**, or **Open tabs**. Installed-browser badges describe destinations only; they do not mean TabDeck can read those browsers' live sessions.
 
-- **Share to TabDeck** from any Android browser for individual pages or browser-provided URL lists.
-- **Paste/import** for copied text, Markdown, HTML, CSV, bookmarks, or URL-list files.
-- **Firefox Android connector** for an authorized Firefox snapshot.
-- **Local bridge** for a desktop extension or Windows Desktop Link.
+## 2. Capture tabs explicitly
 
-Imports are previews first. TabDeck validates and normalizes candidates but does not silently delete duplicates.
+Open **Capture** and choose the route that matches the source:
 
-## 2. Work from Overview
+- **Android Share** for the current page or links supplied by the browser.
+- **Paste or file import** for URL lists, text, Markdown, CSV, HTML bookmarks, or backups.
+- **Browser extension** for a permitted Firefox or desktop Chromium snapshot.
+- **Desktop Link** for an ADB-authorized Android Chromium session that exposes DevTools targets.
 
-Overview shows inventory health, lifecycle totals, duplicate pressure, browser/source topology, recent imports and transfers, pinned smart views, and launch decks. Use an actionable metric or source facet to open the corresponding filtered Library view.
+Imports are previewed and validated first. TabDeck never silently deletes duplicates or truncates later valid items because a collection is large.
 
-## 3. Search and filter the Library
+## 3. Find and organize in Tabs
 
-Library search covers URL, title, notes, tags, browser, groups, source device, and source/native group metadata. Combine it with:
+Search covers URL, title, notes, tags, browser, TabDeck group, source device, and captured source session. Combine search with lifecycle, browser, group, source, tag, pin, note, stale, and sort filters.
 
-- lifecycle lanes: Active, Archived, Snoozed, Trash;
-- browser and TabDeck-group filters;
-- source-device and source-group filters;
-- pinned, notes, stale, and tag filters;
-- sort mode and direction;
-- list/grid and density preferences.
+The list is paged from Room. **Select visible** affects loaded rows; **select all matching** resolves the complete current query. Bulk actions operate on the complete resolved selection.
 
-The list is loaded incrementally from Room. **Select visible** affects currently loaded rows; **select all matching** resolves the entire current query up to the bounded control ceiling.
+Use:
 
-## 4. Organize durable knowledge
+- **Groups** for a stable taxonomy independent of browser-native groups.
+- **Tags and notes** for durable context.
+- **Smart views** to save a complete query.
+- **Launch decks** for an explicitly ordered recurring set.
+- **Rules** for tested, ordered categorization.
+- **Duplicate review** to choose a survivor and move redundant records to recoverable Trash.
 
-- **Groups** provide a stable TabDeck taxonomy independent of browser-native groups.
-- **Tags** support add, remove, replace, and clear semantics in bulk.
-- **Notes** retain context that browsers usually do not preserve.
-- **Smart views** save the complete filter and sort state; pinned views appear on Overview.
-- **Launch decks** preserve explicit ordered membership for recurring sessions.
-- **Regex rules** match URL, title, host, source group, tags, or combined text. Test a rule against the active library before applying it.
+## 4. Open captured tabs
 
-## 5. Review duplicates safely
+1. Open **Open**.
+2. Choose selected tabs, the current view, all active tabs, a group, or a deck.
+3. Choose an installed destination browser.
+4. Choose pacing and confirm.
+5. Follow dispatched, failed, and cancelled request counts.
 
-Choose a matching level:
+TabDeck sends Android `ACTION_VIEW` intents with an explicit create-new-tab request for each valid URL. A successful dispatch means Android accepted the request; the destination browser still owns final rendering, task reuse, policy, and failure behavior. TabDeck does not claim a page loaded merely because the intent was dispatched.
 
-- exact URL;
-- normalized URL;
-- host plus path.
+## 5. Lifecycle and recovery
 
-Then choose a survivor policy: newest, oldest, richest metadata, or pinned-first. Preview clusters before applying. Optional metadata merge retains useful tags, notes, timestamps, pin state, group, and transfer metadata. Redundant records move to Trash instead of being permanently removed.
+- **Archive** retains completed material outside the active flow.
+- **Snooze** returns a tab after the chosen time.
+- **Trash** stays recoverable until explicit permanent deletion.
+- Full JSON backup is the authoritative recovery format; Markdown, CSV, and bookmarks HTML are portable readable exports.
 
-## 6. Transfer to an Android browser
+Backups preserve the complete supported collection and exclude the active bridge credential.
 
-1. Select tabs, a matching query, a group, or a launch deck.
-2. Choose an installed destination browser.
-3. Review the bounded count and pacing mode.
-4. Confirm the destination.
-5. Watch live progress or cancel.
+## 6. Settings and bridge
 
-Transfer opens validated copies. It does not universally close source tabs or recreate native browser groups. Partial success and failure counts are recorded.
+Settings contains capture defaults, appearance, exports, maintenance, and diagnostics. Capture contains the temporary local bridge. Session duration and stale thresholds accept any positive integer rather than a fixed preset ceiling.
 
-## 7. Lifecycle controls
-
-- **Archive** removes completed material from the active flow without deleting it.
-- **Snooze** returns tabs after a selected time.
-- **Trash** is recoverable until permanent deletion.
-- Emptying Trash and permanent selected deletion require explicit confirmation.
-
-## 8. Export and recovery
-
-- **Full JSON backup v3** is the authoritative portable recovery format.
-- **Markdown** is a grouped readable outline.
-- **CSV** is a metadata-rich table with spreadsheet-formula neutralization.
-- **Bookmarks HTML** is suitable for browser bookmark import.
-
-Readable exports exclude Trash; the full backup retains bounded recoverable data and excludes live bridge credentials.
+The bridge remains loopback-only, authenticated, temporary, request-size bounded, and rate-limited. Desktop Link splits large selections into multiple requests so these security boundaries do not become collection-count ceilings.

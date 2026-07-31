@@ -115,7 +115,8 @@ class LocalBridgeService : Service() {
                 val state = runBlocking { repository.currentState() }
                 sessionScope = BridgeScope.THIS_DEVICE
                 val now = System.currentTimeMillis()
-                sessionExpiry = now + state.settings.bridgeSessionMinutes.coerceIn(5, 120) * 60_000L
+                val effectiveMinutes = state.settings.bridgeSessionMinutes.coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES)
+                sessionExpiry = now + TimeUnit.MINUTES.toMillis(effectiveMinutes.toLong())
                 runBlocking {
                     repository.setBridgeSession(
                         BridgeSession(
@@ -130,7 +131,7 @@ class LocalBridgeService : Service() {
                 startForegroundBridge(
                     getString(
                         R.string.bridge_notification_active,
-                        state.settings.bridgeSessionMinutes,
+                        effectiveMinutes,
                     ),
                 )
 

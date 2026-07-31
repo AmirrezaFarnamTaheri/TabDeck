@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Browser
 import com.tabdeck.app.model.BrowserId
 import com.tabdeck.app.model.TabItem
 import com.tabdeck.app.model.TransferEvent
@@ -45,21 +46,19 @@ class BrowserTransferCoordinator(private val context: Context) {
         tabs: List<TabItem>,
         target: BrowserId,
         pacing: TransferPacing,
-        batchLimit: Int,
         onProgress: (Progress) -> Unit = {},
     ): Result {
         val startedAt = System.currentTimeMillis()
-        val bounded = tabs.take(batchLimit.coerceIn(1, MAX_BATCH_LIMIT))
         val packageName = target.packageName
         if (packageName == null || !isInstalled(target)) {
             val event = TransferEvent(
                 targetBrowser = target,
-                attempted = bounded.size,
+                attempted = tabs.size,
                 opened = 0,
-                failed = bounded.size,
+                failed = tabs.size,
                 durationMs = System.currentTimeMillis() - startedAt,
             )
-            return Result(event, bounded.map { it.url }, emptySet())
+            return Result(event, tabs.map { it.url }, emptySet())
         }
 
         var opened = 0
@@ -69,9 +68,9 @@ class BrowserTransferCoordinator(private val context: Context) {
         val successful = linkedSetOf<String>()
 
         try {
-            for ((index, tab) in bounded.withIndex()) {
+            for ((index, tab) in tabs.withIndex()) {
                 coroutineContext.ensureActive()
-                onProgress(Progress(target, bounded.size, processed, opened, failed.size, tab.title, tab.url))
+                onProgress(Progress(target, tabs.size, processed, opened, failed.size, tab.title, tab.url))
                 val success = openInBrowser(tab.url, packageName)
                 processed++
                 if (success) {
@@ -80,8 +79,8 @@ class BrowserTransferCoordinator(private val context: Context) {
                 } else {
                     failed += tab.url
                 }
-                onProgress(Progress(target, bounded.size, processed, opened, failed.size, tab.title, tab.url))
-                if (index < bounded.lastIndex) delay(pacing.delayMs)
+                onProgress(Progress(target, tabs.size, processed, opened, failed.size, tab.title, tab.url))
+                if (index < tabs.lastIndex) delay(pacing.delayMs)
             }
         } catch (_: CancellationException) {
             cancelled = true
@@ -95,7 +94,7 @@ class BrowserTransferCoordinator(private val context: Context) {
             cancelled = cancelled,
             durationMs = System.currentTimeMillis() - startedAt,
         )
-        onProgress(Progress(target, bounded.size, processed, opened, failed.size, cancelled = cancelled))
+        onProgress(Progress(target, tabs.size, processed, opened, failed.size, cancelled = cancelled))
         return Result(event, failed, successful)
     }
 
@@ -104,6 +103,8 @@ class BrowserTransferCoordinator(private val context: Context) {
             setPackage(packageName)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addCategory(Intent.CATEGORY_BROWSABLE)
+            putExtra(Browser.EXTRA_CREATE_NEW_TAB, true)
+            putExtra(Browser.EXTRA_APPLICATION_ID, context.packageName)
         }
         context.startActivity(intent)
         true
@@ -117,7 +118,4 @@ class BrowserTransferCoordinator(private val context: Context) {
         false
     }
 
-    companion object {
-        const val MAX_BATCH_LIMIT = 250
-    }
 }

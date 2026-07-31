@@ -1,37 +1,42 @@
 # TabDeck Desktop Link for Windows
 
-Desktop Link is an optional Android-control companion. It uses an already authorized ADB connection and Chromium's exposed DevTools HTTP targets; it does not read browser profile databases or enable debugging.
+Desktop Link is a guided capture workspace for Android Chromium sessions exposed to an already authorized ADB host. It does not read browser profile databases, enable developer options, authorize a computer, or bypass browser debugging restrictions.
 
-## Capabilities
+## Guided workflow
 
-- discover authorized devices and up to 32 visible `*devtools_remote*` sockets
-- allocate dynamic local forward ports
-- read live page targets from `/json`
-- search and select visible targets
-- select normalized duplicate copies while retaining one survivor
-- open selected URLs in another exposed Android Chromium target with `/json/new`
-- optionally close only source targets whose destination creation was confirmed
-- explicitly close selected live targets after confirmation
-- push up to 25,000 selected targets to a device-local TabDeck bridge through ADB forwarding
-- export selected targets as JSON or URL text
+1. **Device** — refresh authorized Android devices and choose one.
+2. **Browser tabs** — load visible `*devtools_remote*` sessions and inspect their page targets.
+3. **Selection** — search, select, and review the exact tabs to send.
+4. **Send to TabDeck** — start the app's temporary bridge, enter its token, and send the complete selection.
 
-## Safety limits
+The workspace also supports explicit secondary actions: export selected URLs/JSON, open selected URLs in another exposed Chromium session, and close selected live targets after confirmation.
 
-- 20-second ADB timeout
-- maximum 250 live open/close targets per run
-- confirmation before transfer or close
-- temporary forward cleanup on device refresh/window close
-- no token storage
-- no operation when the browser exposes no DevTools socket
+## Behavior
+
+- Discovers every visible DevTools socket returned by the selected authorized device.
+- Uses dynamic local forwarding ports and cleans temporary forwards on refresh and exit.
+- Loads live page targets from `/json` and labels each target with its browser session.
+- Sends every selected valid tab. Payloads are split by approximate request bytes when necessary rather than truncating by count.
+- Opens selected URLs in another exposed target before optionally closing confirmed source targets.
+- Never stores the bridge token.
+- Treats absence of a DevTools socket as a supported browser/build limitation.
+
+## Safety boundaries
+
+- Per-command ADB timeouts prevent a frozen process from hanging the workspace indefinitely.
+- Destructive close operations require confirmation.
+- Destination creation is confirmed before optional source closure.
+- The TabDeck bridge remains loopback-only, authenticated, temporary, and request-size bounded.
+- There is no arbitrary tab-count ceiling for selection, export, opening, closing, or capture.
 
 ## Requirements
 
 - Windows 10/11
 - PowerShell 7.2+
 - current Android Platform Tools (`adb.exe`)
-- Developer options + USB debugging enabled by the user
+- Developer options and USB debugging enabled by the device owner
 - host authorization accepted on the device
-- a Chromium browser build that exposes a DevTools remote socket
+- an Android Chromium build that exposes a DevTools remote socket
 
 Run:
 
@@ -39,4 +44,4 @@ Run:
 pwsh -NoProfile -ExecutionPolicy Bypass -Sta -File .\TabDeckLink.ps1
 ```
 
-The destination/source labels are DevTools socket names, not a guaranteed mapping to native Android tab groups. Validate target browser behavior on the exact device/build before destructive use.
+DevTools socket labels are technical session identifiers, not guaranteed native Android browser group names. Validate destructive behavior on the exact browser build and device before closing live targets.

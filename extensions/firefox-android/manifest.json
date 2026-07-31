@@ -1,10 +1,15 @@
 {
   "manifest_version": 2,
   "name": "TabDeck Control Bridge for Firefox",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Capture, preview, deduplicate and send Firefox Android tabs to the TabDeck control deck.",
-  "permissions": ["tabs", "storage"],
-  "optional_permissions": ["http://*/*"],
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
+  "optional_permissions": [
+    "http://127.0.0.1:48721/*"
+  ],
   "browser_action": {
     "default_title": "TabDeck tab control",
     "default_popup": "popup.html",

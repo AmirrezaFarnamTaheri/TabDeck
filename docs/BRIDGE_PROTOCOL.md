@@ -94,9 +94,9 @@ Canonical source equality is derived from connector/device/browser/profile/sessi
 - strict Origin policy for extension and loopback origins;
 - JSON content type for imports;
 - constant-time token comparison;
-- bounded request target, headers, body, sockets, timeouts, text fields, and tab count;
+- bounded request target, headers, body, sockets, timeouts, and security-sensitive text fields;
 - strict UTF-8;
-- maximum 25,000 tabs per request;
+- no arbitrary tab-count ceiling; senders split large snapshots by request bytes and preserve the complete selection;
 - HTTP(S) URLs only;
 - invalid tab entries rejected individually;
 - duplicate source IDs coalesced deterministically;

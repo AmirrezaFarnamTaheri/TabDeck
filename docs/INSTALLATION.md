@@ -4,7 +4,7 @@
 
 ### Install the GitHub Release APK
 
-1. Download `TabDeck-v1.0.0.apk` and `TabDeck-v1.0.0-SHA256.txt` from the same GitHub Release.
+1. Download `TabDeck-v1.1.0.apk` and `TabDeck-v1.1.0-SHA256.txt` from the same GitHub Release.
 2. Verify the APK checksum before installing.
 3. Optionally confirm the APK signing-certificate SHA-256 is `8265D1219753753DC36635BAAEAB887FE63742C93CD686A498E5B66683A704A7`.
 4. On Android, allow installation from the file manager or browser used to open the APK when prompted.
@@ -37,7 +37,7 @@ The debug APK is produced under `app/build/outputs/apk/debug/`.
 
 The unsigned XPI is a development artifact. Installation support differs by Firefox Android channel and release.
 
-1. Start a TabDeck bridge session from **Control room**.
+1. Start a TabDeck bridge session from **Capture**.
 2. Use the loopback endpoint and token shown by TabDeck.
 3. Install the XPI using a Firefox Android development/add-on path supported by the chosen channel.
 4. Open the connector, enter the endpoint and token, and use **Test bridge** before sending tabs.
@@ -47,7 +47,7 @@ The connector cannot bypass Firefox permissions or unsupported mobile extension 
 
 ## Chromium desktop connector
 
-1. Extract `TabDeck-v1.0.0-Chromium-Bridge.zip`.
+1. Extract `TabDeck-v1.1.0-Chromium-Bridge.zip`.
 2. Open the browser's extensions page.
 3. Enable developer mode.
 4. Choose **Load unpacked** and select the extracted folder.
@@ -72,8 +72,8 @@ Requirements:
 - USB debugging explicitly enabled and authorized by the device owner
 - A supported Android Chromium build exposing a DevTools socket
 
-Extract `TabDeck-v1.0.0-Desktop-Link.zip`, read its included README, and run `Start-TabDeckLink.cmd`. The companion does not enable developer options, authorize the computer, or bypass browser debugging restrictions.
+Extract `TabDeck-v1.1.0-Desktop-Link.zip`, read its included README, and run `Start-TabDeckLink.cmd`. The companion does not enable developer options, authorize the computer, or bypass browser debugging restrictions.
 
 ## Upgrade and data safety
 
-Community GitHub APKs use the same repository-published signing key, so a later version can upgrade an earlier community build. Before upgrading, create a full JSON backup from **Control room**. Product version numbers do not replace internal format versions; existing Room, backup, query, and bridge compatibility identifiers are preserved deliberately.
+Community GitHub APKs use the same repository-published signing key, so a later version can upgrade an earlier community build. Before upgrading, create a full JSON backup from **Capture**. Product version numbers do not replace internal format versions; existing Room, backup, query, and bridge compatibility identifiers are preserved deliberately.

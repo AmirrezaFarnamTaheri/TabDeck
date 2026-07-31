@@ -45,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,13 +72,25 @@ import com.tabdeck.app.model.TabStatus
 import com.tabdeck.app.model.TagEditMode
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit, onChooseFile: () -> Unit) {
     var text by remember { mutableStateOf("") }
-    val detected = remember(text) { UrlExtractor.extract(text).take(25_000) }
-    val normalizedKeys = remember(detected) { detected.map(UrlNormalizer::normalized) }
-    val duplicateCopies = remember(normalizedKeys) { normalizedKeys.size - normalizedKeys.distinct().size }
+    var detected by remember { mutableStateOf<List<String>>(emptyList()) }
+    var duplicateCopies by remember { mutableIntStateOf(0) }
+    LaunchedEffect(text) {
+        delay(200)
+        val (urls, duplicates) = withContext(Dispatchers.Default) {
+            val extracted = UrlExtractor.extract(text)
+            val normalizedKeys = extracted.map(UrlNormalizer::normalized)
+            extracted to (normalizedKeys.size - normalizedKeys.distinct().size)
+        }
+        detected = urls
+        duplicateCopies = duplicates
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bring tabs into the control deck") },
@@ -86,7 +99,7 @@ fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit, onChooseFile
                 Text("Paste URLs, Markdown links, exported text, or an HTML snippet. TabDeck extracts and validates only HTTP and HTTPS destinations.")
                 OutlinedTextField(
                     value = text,
-                    onValueChange = { text = it.take(500_000) },
+                    onValueChange = { text = it },
                     label = { Text("URLs or text") },
                     minLines = 7,
                     maxLines = 12,
@@ -96,7 +109,6 @@ fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit, onChooseFile
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         AssistChip(onClick = {}, label = { Text("${detected.size} valid links") })
                         AssistChip(onClick = {}, label = { Text("$duplicateCopies duplicate copies") })
-                        if (detected.size >= 25_000) AssistChip(onClick = {}, label = { Text("25,000-link safety cap") })
                     }
                     if (detected.isEmpty()) {
                         Text("No valid HTTP(S) links detected yet.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -141,7 +153,7 @@ fun TabDetailDialog(
                 item {
                     Text(tab.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                item { OutlinedTextField(title, { title = it.take(500) }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth()) }
                 item {
                     Column {
                         OutlinedButton(onClick = { groupMenu = true }, modifier = Modifier.fillMaxWidth()) {
@@ -155,8 +167,8 @@ fun TabDetailDialog(
                         }
                     }
                 }
-                item { OutlinedTextField(tags, { tags = it.take(1_000) }, label = { Text("Tags, comma separated") }, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(notes, { notes = it.take(20_000) }, label = { Text("Notes") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(tags, { tags = it }, label = { Text("Tags, comma separated") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth()) }
                 item {
                     KeyValueRow("Source", tab.browser.displayName)
                     KeyValueRow("Imported", formatTime(tab.importedAtEpochMs))
@@ -172,7 +184,7 @@ fun TabDetailDialog(
                         title = title.trim(),
                         assignedGroup = group.trim().ifBlank { "Inbox" },
                         notes = notes.trim(),
-                        tags = tags.split(',').map(String::trim).filter(String::isNotBlank).take(64).toSet(),
+                        tags = tags.split(',').map(String::trim).filter(String::isNotBlank).toSet(),
                     ),
                 )
                 onDismiss()
@@ -196,7 +208,7 @@ fun GroupPickerDialog(groups: List<String>, onDismiss: () -> Unit, onChoose: (St
         title = { Text("Assign group") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(search, { search = it.take(100) }, label = { Text("Find group") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(search, { search = it }, label = { Text("Find group") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, modifier = Modifier.fillMaxWidth())
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     items(filtered, key = { it }) { group ->
                         TextButton(onClick = { onChoose(group); onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text(group, modifier = Modifier.fillMaxWidth()) }
@@ -216,7 +228,6 @@ fun BulkTagDialog(onDismiss: () -> Unit, onApply: (TagEditMode, Set<String>) -> 
     val parsed = rawTags.split(',', '\n')
         .map(String::trim)
         .filter(String::isNotBlank)
-        .take(64)
         .toCollection(linkedSetOf())
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -237,7 +248,7 @@ fun BulkTagDialog(onDismiss: () -> Unit, onApply: (TagEditMode, Set<String>) -> 
                 }
                 OutlinedTextField(
                     value = rawTags,
-                    onValueChange = { rawTags = it.take(2_000) },
+                    onValueChange = { rawTags = it },
                     label = { Text("Tags") },
                     minLines = 3,
                     modifier = Modifier.fillMaxWidth(),
@@ -361,16 +372,17 @@ fun RuleDialog(existing: RegexRule?, groups: List<String>, onDismiss: () -> Unit
     var enabled by remember(existing?.id) { mutableStateOf(existing?.enabled ?: true) }
     var destinationMenu by remember { mutableStateOf(false) }
     var targetMenu by remember { mutableStateOf(false) }
+    val priorityValue = priority.toIntOrNull()
     val candidate = RegexRule(
         id = existing?.id ?: java.util.UUID.randomUUID().toString(),
         name = name.trim(),
         pattern = pattern,
         target = target,
         destinationGroup = destination.trim(),
-        priority = priority.toIntOrNull()?.coerceIn(-10_000, 10_000) ?: 100,
+        priority = priorityValue ?: existing?.priority ?: 100,
         enabled = enabled,
         ignoreCase = ignoreCase,
-        addTags = tags.split(',').map(String::trim).filter(String::isNotBlank).take(32).toSet(),
+        addTags = tags.split(',').map(String::trim).filter(String::isNotBlank).toSet(),
         stopAfterMatch = stopAfterMatch,
     )
     val validation = RegexCategorizer.validate(candidate)
@@ -379,8 +391,8 @@ fun RuleDialog(existing: RegexRule?, groups: List<String>, onDismiss: () -> Unit
         title = { Text(if (existing == null) "Create categorization rule" else "Edit categorization rule") },
         text = {
             LazyColumn(Modifier.heightIn(max = 680.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                item { OutlinedTextField(name, { name = it.take(120) }, label = { Text("Rule name") }, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(pattern, { pattern = it.take(2_000) }, label = { Text("RE2/J pattern") }, minLines = 3, maxLines = 7, modifier = Modifier.fillMaxWidth(), isError = pattern.isNotBlank() && !validation.valid, supportingText = { if (!validation.valid) Text(validation.error) }) }
+                item { OutlinedTextField(name, { name = it }, label = { Text("Rule name") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(pattern, { pattern = it }, label = { Text("RE2/J pattern") }, minLines = 3, maxLines = 7, modifier = Modifier.fillMaxWidth(), isError = pattern.isNotBlank() && !validation.valid, supportingText = { if (!validation.valid) Text(validation.error) }) }
                 item {
                     Column {
                         OutlinedButton(onClick = { targetMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Match: ${target.label}") }
@@ -397,14 +409,37 @@ fun RuleDialog(existing: RegexRule?, groups: List<String>, onDismiss: () -> Unit
                         }
                     }
                 }
-                item { OutlinedTextField(priority, { priority = it.filter { ch -> ch.isDigit() || ch == '-' }.take(7) }, label = { Text("Priority (lower runs first)") }, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(tags, { tags = it.take(500) }, label = { Text("Tags to add") }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    OutlinedTextField(
+                        value = priority,
+                        onValueChange = { value ->
+                            val digits = value.filter(Char::isDigit)
+                            priority = if (value.startsWith('-')) "-$digits" else digits
+                        },
+                        label = { Text("Priority (lower runs first)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = priorityValue == null,
+                        supportingText = {
+                            if (priorityValue == null) Text("Enter a whole number from -2147483648 to 2147483647")
+                        },
+                    )
+                }
+                item { OutlinedTextField(tags, { tags = it }, label = { Text("Tags to add") }, modifier = Modifier.fillMaxWidth()) }
                 item { SwitchLine("Enabled", enabled) { enabled = it } }
                 item { SwitchLine("Ignore case", ignoreCase) { ignoreCase = it } }
                 item { SwitchLine("Stop after this rule matches", stopAfterMatch) { stopAfterMatch = it } }
             }
         },
-        confirmButton = { Button(onClick = { onSave(candidate); onDismiss() }, enabled = validation.valid && name.isNotBlank() && destination.isNotBlank()) { Text("Save rule") } },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsedPriority = priorityValue ?: return@Button
+                    onSave(candidate.copy(priority = parsedPriority))
+                    onDismiss()
+                },
+                enabled = priorityValue != null && validation.valid && name.isNotBlank() && destination.isNotBlank(),
+            ) { Text("Save rule") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -415,34 +450,48 @@ fun GroupDialog(existing: GroupDefinition?, onDismiss: () -> Unit, onSave: (Grou
     var color by remember(existing?.id) { mutableStateOf(existing?.colorKey ?: "indigo") }
     var icon by remember(existing?.id) { mutableStateOf(existing?.iconKey ?: "folder") }
     var sortOrder by remember(existing?.id) { mutableStateOf((existing?.sortOrder ?: 100).toString()) }
+    val sortOrderValue = sortOrder.toIntOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (existing == null) "Create group" else "Edit group") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(name, { name = it.take(120) }, label = { Text("Group name") }, modifier = Modifier.fillMaxWidth(), enabled = existing?.isSystem != true)
-                OutlinedTextField(color, { color = it.take(40) }, label = { Text("Color key") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(icon, { icon = it.take(40) }, label = { Text("Icon key") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(sortOrder, { sortOrder = it.filter(Char::isDigit).take(6) }, label = { Text("Sort order") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text("Group name") }, modifier = Modifier.fillMaxWidth(), enabled = existing?.isSystem != true)
+                OutlinedTextField(color, { color = it }, label = { Text("Color key") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(icon, { icon = it }, label = { Text("Icon key") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = sortOrder,
+                    onValueChange = { value ->
+                        val digits = value.filter(Char::isDigit)
+                        sortOrder = if (value.startsWith('-')) "-$digits" else digits
+                    },
+                    label = { Text("Sort order") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = sortOrderValue == null,
+                    supportingText = {
+                        if (sortOrderValue == null) Text("Enter a whole number from -2147483648 to 2147483647")
+                    },
+                )
                 if (existing?.isSystem == true) Text("The Inbox name is protected, but its visual metadata can be changed.", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
             Button(
                 onClick = {
+                    val parsedSortOrder = sortOrderValue ?: return@Button
                     onSave(
                         GroupDefinition(
                             id = existing?.id ?: java.util.UUID.randomUUID().toString(),
                             name = name.trim(),
                             colorKey = color.trim().ifBlank { "indigo" },
                             iconKey = icon.trim().ifBlank { "folder" },
-                            sortOrder = sortOrder.toIntOrNull()?.coerceIn(0, 100_000) ?: 100,
+                            sortOrder = parsedSortOrder,
                             isSystem = existing?.isSystem ?: false,
                         ),
                     )
                     onDismiss()
                 },
-                enabled = name.isNotBlank(),
+                enabled = name.isNotBlank() && sortOrderValue != null,
             ) { Text("Save group") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -458,7 +507,7 @@ fun SaveViewDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("The current search, status lanes, filters, and sort order will be reusable from the Library and Organize screens.")
-                OutlinedTextField(name, { name = it.take(120) }, label = { Text("View name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(name, { name = it }, label = { Text("View name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             }
         },
         confirmButton = { Button(onClick = { onSave(name.trim()); onDismiss() }, enabled = name.isNotBlank()) { Icon(Icons.Outlined.Save, null); Text("Save", Modifier.padding(start = 8.dp)) } },
@@ -476,8 +525,8 @@ fun CreateDeckDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("A deck is a deliberate, reusable set of selected tabs. It can be transferred later without re-running a search.")
-                OutlinedTextField(name, { name = it.take(120) }, label = { Text("Deck name") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(description, { description = it.take(500) }, label = { Text("Description") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text("Deck name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(description, { description = it }, label = { Text("Description") }, minLines = 2, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = { Button(onClick = { onCreate(name.trim(), description.trim()); onDismiss() }, enabled = name.isNotBlank()) { Text("Create deck") } },
@@ -582,7 +631,7 @@ fun LibraryFilterDialog(
                         }
                     }
                 }
-                item { OutlinedTextField(tags, { tags = it.take(500) }, label = { Text("Required tags, comma separated") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(tags, { tags = it }, label = { Text("Required tags, comma separated") }, modifier = Modifier.fillMaxWidth()) }
                 item { SwitchLine("Pinned only", working.pinnedOnly) { working = working.copy(pinnedOnly = it) } }
                 item { SwitchLine("Has notes", working.hasNotesOnly) { working = working.copy(hasNotesOnly = it) } }
                 item { SwitchLine("Stale only", working.staleOnly) { working = working.copy(staleOnly = it) } }
@@ -599,7 +648,7 @@ fun LibraryFilterDialog(
         },
         confirmButton = {
             Button(onClick = {
-                onApply(working.copy(tags = tags.split(',').map(String::trim).filter(String::isNotBlank).take(16).toSet()))
+                onApply(working.copy(tags = tags.split(',').map(String::trim).filter(String::isNotBlank).toSet()))
                 onDismiss()
             }) { Text("Apply") }
         },
@@ -667,7 +716,7 @@ fun CommandPaletteDialog(actions: List<PaletteAction>, onDismiss: () -> Unit) {
         title = { Text("Command palette") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(query, { query = it.take(120) }, modifier = Modifier.fillMaxWidth(), label = { Text("Search actions") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
+                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Search actions") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
                 LazyColumn(Modifier.heightIn(max = 520.dp)) {
                     items(filtered, key = { it.title }) { item ->
                         TextButton(

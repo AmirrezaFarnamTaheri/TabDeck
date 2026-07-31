@@ -30,4 +30,26 @@ class RegexCategorizerTest {
         assertFalse(RegexCategorizer.validate(invalid).valid)
         assertTrue(RegexCategorizer.matches(TabItem(url = "https://github.com/openai"), valid))
     }
+    @Test
+    fun evaluatesRulesBeyondTheFormerRuleCeiling() {
+        val rules = (0 until 250).map { index ->
+            RegexRule(name = "Miss $index", pattern = "never-match-$index", destinationGroup = "Miss", priority = index)
+        } + RegexRule(name = "Final", pattern = "example\\.com", destinationGroup = "Found", priority = 250)
+
+        val result = RegexCategorizer.categorize(TabItem(url = "https://example.com"), rules)
+
+        assertEquals("Found", result.assignedGroup)
+    }
+
+    @Test
+    fun rejectsOversizedPatternsWithoutLimitingRuleCount() {
+        val oversized = RegexRule(
+            name = "Oversized",
+            pattern = "a".repeat(4_097),
+            destinationGroup = "Rejected",
+        )
+
+        assertFalse(RegexCategorizer.validate(oversized).valid)
+    }
+
 }

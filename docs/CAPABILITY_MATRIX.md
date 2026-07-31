@@ -39,7 +39,7 @@ Android application sandboxing prevents a normal unrelated app from opening anot
 | Preserve source grouping | TabDeck metadata | API-dependent | Source socket metadata; not native Android groups |
 | Deduplicate local inventory | Yes | Preview/cleanup inside Firefox | Select duplicate live targets |
 | Close browser tabs | No | User-triggered extension cleanup where API permits | Yes, explicit confirmation and exposed target only |
-| Open in another Android browser | Yes, explicit intent | Via TabDeck | Yes, exposed DevTools destination |
+| Open in another Android browser | Yes, explicit create-new-tab request; rendering remains browser-owned | Via TabDeck | Yes, exposed DevTools destination |
 | Force destination-native tab groups | No | No cross-browser guarantee | No guarantee |
 
 ## Deliberately excluded

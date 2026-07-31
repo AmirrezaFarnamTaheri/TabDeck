@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Browser
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -146,7 +147,7 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
             ).firstOrNull { !it.isNullOrBlank() }
             val sourceBrowser = TabDeckRepository.browserForPackage(sourcePackage)
             val textParts = collectIntentTextParts(intent)
-            val urls = textParts.flatMap(UrlExtractor::extract).take(MAX_INTENT_URLS)
+            val urls = textParts.flatMap(UrlExtractor::extract)
             if (urls.isNotEmpty()) importUrls(urls, if (sourceBrowser == BrowserId.UNKNOWN) BrowserId.SHARE_SHEET else sourceBrowser)
         }
     }
@@ -227,11 +228,11 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setLibraryQuery(query: LibraryQuery) {
-        _libraryQuery.value = query.copy(search = query.search.take(500))
+        _libraryQuery.value = query
         clearSelection()
     }
 
-    fun updateSearch(value: String) { _libraryQuery.update { it.copy(search = value.take(500)) } }
+    fun updateSearch(value: String) { _libraryQuery.update { it.copy(search = value) } }
     fun updateStatuses(value: Set<TabStatus>) { _libraryQuery.update { it.copy(statuses = value.ifEmpty { setOf(TabStatus.ACTIVE) }) }; clearSelection() }
     fun updateBrowsers(value: Set<BrowserId>) { _libraryQuery.update { it.copy(browsers = value) }; clearSelection() }
     fun updateGroups(value: Set<String>) { _libraryQuery.update { it.copy(groups = value) }; clearSelection() }
@@ -268,16 +269,9 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun selectAllMatching() = launch(Dispatchers.IO) {
         _busyAction.value = "Selecting matching tabs"
         try {
-            val total = repository.countTabs(_libraryQuery.value)
-            val ids = repository.tabsForQuery(_libraryQuery.value, MAX_SELECT_ALL).mapTo(linkedSetOf()) { it.id }
+            val ids = repository.tabsForQuery(_libraryQuery.value).mapTo(linkedSetOf()) { it.id }
             _selectedIds.value = ids
-            messages.emit(
-                when {
-                    ids.isEmpty() -> "No tabs match the current view"
-                    total > ids.size -> "Selected ${ids.size} of $total matching tabs (safety cap)"
-                    else -> "Selected all ${ids.size} matching tabs"
-                },
-            )
+            messages.emit(if (ids.isEmpty()) "No tabs match the current view" else "Selected all ${ids.size} matching tabs")
         } finally {
             _busyAction.value = null
         }
@@ -465,28 +459,23 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val settings = state.value.settings
-        val boundedCount = minOf(candidates.size, settings.transferBatchLimit)
-        if (candidates.size > settings.transferBatchLimit) {
-            messages.emit("Transfer capped at ${settings.transferBatchLimit}; adjust the limit in Settings")
-        }
         withContext(Dispatchers.Main) {
             transferJob = viewModelScope.launch {
                 try {
-                    _transferProgress.value = BrowserTransferCoordinator.Progress(target, boundedCount, 0, 0, 0)
+                    _transferProgress.value = BrowserTransferCoordinator.Progress(target, candidates.size, 0, 0, 0)
                     val result = transferCoordinator.transfer(
                         tabs = candidates,
                         target = target,
                         pacing = settings.transferPacing,
-                        batchLimit = settings.transferBatchLimit,
                         onProgress = { _transferProgress.value = it },
                     )
                     withContext(NonCancellable + Dispatchers.IO) {
                         repository.recordTransfer(result.event, result.successfulIds)
                         messages.emit(
                             when {
-                                result.event.cancelled -> "Transfer cancelled after ${result.event.opened} tabs"
-                                result.event.failed == 0 -> "Opened ${result.event.opened} tabs in ${target.displayName}"
-                                else -> "Opened ${result.event.opened}; ${result.event.failed} failed"
+                                result.event.cancelled -> "Open request cancelled after ${result.event.opened} URLs were dispatched"
+                                result.event.failed == 0 -> "Sent ${result.event.opened} new-tab requests to ${target.displayName}"
+                                else -> "Sent ${result.event.opened} new-tab requests; ${result.event.failed} could not be dispatched"
                             },
                         )
                     }
@@ -509,6 +498,9 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun openTab(tab: TabItem, browser: BrowserId? = null) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(tab.url)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            putExtra(Browser.EXTRA_CREATE_NEW_TAB, true)
+            putExtra(Browser.EXTRA_APPLICATION_ID, getApplication<Application>().packageName)
             browser?.packageName?.let(::setPackage)
         }
         runCatching { getApplication<Application>().startActivity(intent) }
@@ -521,15 +513,7 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
             messages.emit("Select tabs to share")
             return@launch
         }
-        if (selected.size > MAX_SHARE_TABS) {
-            messages.emit("Android sharing is limited to $MAX_SHARE_TABS tabs per action; narrow the selection or export a backup")
-            return@launch
-        }
         val text = selected.joinToString("\n") { it.url }
-        if (text.length > MAX_CLIPBOARD_CHARACTERS) {
-            messages.emit("This URL set is too large for a reliable Android share; narrow the selection or export a backup")
-            return@launch
-        }
         val intent = Intent.createChooser(
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -548,10 +532,6 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
         val urls = repository.tabsByIds(_selectedIds.value).joinToString("\n") { it.url }
         if (urls.isBlank()) {
             messages.emit("Select tabs to copy")
-            return@launch
-        }
-        if (urls.length > MAX_CLIPBOARD_CHARACTERS) {
-            messages.emit("Clipboard copy is limited to $MAX_CLIPBOARD_CHARACTERS characters; narrow the selection or export a backup")
             return@launch
         }
         withContext(Dispatchers.Main) { copyToClipboard("TabDeck URLs", urls) }
@@ -577,9 +557,10 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun setBridgeScope(value: BridgeScope) = updateSettings {
         it.copy(bridgeScope = value.takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE)
     }
-    fun setBridgeSessionMinutes(value: Int) = updateSettings { it.copy(bridgeSessionMinutes = value.coerceIn(5, 120)) }
+    fun setBridgeSessionMinutes(value: Int) = updateSettings {
+        it.copy(bridgeSessionMinutes = value.coerceIn(1, BridgeNetwork.MAX_SESSION_MINUTES))
+    }
     fun setTransferPacing(value: TransferPacing) = updateSettings { it.copy(transferPacing = value) }
-    fun setTransferBatchLimit(value: Int) = updateSettings { it.copy(transferBatchLimit = value.coerceIn(1, 250)) }
     fun setViewDensity(value: ViewDensity) = updateSettings { it.copy(viewDensity = value) }
     fun setLibraryLayout(value: LibraryLayout) = updateSettings { it.copy(libraryLayout = value) }
     fun setThemeMode(value: ThemeMode) = updateSettings { it.copy(themeMode = value) }
@@ -588,7 +569,7 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun setReduceMotion(value: Boolean) = updateSettings { it.copy(reduceMotion = value) }
     fun setHapticFeedback(value: Boolean) = updateSettings { it.copy(hapticFeedback = value) }
     fun setSyncMissingPolicy(value: SyncMissingPolicy) = updateSettings { it.copy(syncMissingPolicy = value) }
-    fun setStaleAfterDays(value: Int) = updateSettings { it.copy(staleAfterDays = value.coerceIn(1, 3650)) }
+    fun setStaleAfterDays(value: Int) = updateSettings { it.copy(staleAfterDays = value.coerceAtLeast(1)) }
     fun setShowAdvancedControls(value: Boolean) = updateSettings { it.copy(showAdvancedControls = value) }
     fun setAutoCategorize(value: Boolean) = updateSettings { it.copy(autoCategorizeImports = value) }
     fun setStripTracking(value: Boolean) = updateSettings { it.copy(stripTrackingParameters = value) }
@@ -675,7 +656,7 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
             } else addUri(data)
         }
         intent.clipData?.let { clip ->
-            for (index in 0 until minOf(clip.itemCount, MAX_INTENT_ITEMS)) {
+            for (index in 0 until clip.itemCount) {
                 val item = clip.getItemAt(index)
                 addText(item.text)
                 addUri(item.uri)
@@ -684,7 +665,6 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
         }
         addUri(intent.getParcelableExtra(Intent.EXTRA_STREAM))
         intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
-            ?.take(MAX_INTENT_ITEMS)
             ?.forEach(::addUri)
         return parts
     }
@@ -718,11 +698,6 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
 
     companion object {
         private const val MAX_IMPORT_DOCUMENT_BYTES = 16 * 1024 * 1024
-        private const val MAX_INTENT_ITEMS = 128
-        private const val MAX_INTENT_URLS = 25_000
-        private const val MAX_SHARE_TABS = 100
-        private const val MAX_SELECT_ALL = 25_000
-        private const val MAX_CLIPBOARD_CHARACTERS = 500_000
         const val ACTION_OPEN_IMPORT = "com.tabdeck.app.OPEN_IMPORT"
         const val ACTION_OPEN_LIBRARY = "com.tabdeck.app.OPEN_LIBRARY"
         const val ACTION_OPEN_TRANSFER = "com.tabdeck.app.OPEN_TRANSFER"

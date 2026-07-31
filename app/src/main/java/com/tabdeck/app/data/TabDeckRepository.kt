@@ -214,7 +214,7 @@ class TabDeckRepository(context: Context) {
         val deckBackups = decks.listSummaries().map { row ->
             DeckBackup(
                 deck = row.toModel(),
-                tabIds = decks.tabIdsForDeck(row.id).take(MAX_DECK_TABS),
+                tabIds = decks.tabIdsForDeck(row.id),
             )
         }
         return AppSnapshot(
@@ -232,6 +232,7 @@ class TabDeckRepository(context: Context) {
 
     fun pagedTabs(query: LibraryQuery): Flow<PagingData<TabItem>> {
         val stableQuery = sanitizeQuery(query)
+        TabQueryBuilder.requireSupported(stableQuery)
         return settingsStore.settings.flatMapLatest { settings ->
             Pager(
                 config = PagingConfig(
@@ -254,11 +255,11 @@ class TabDeckRepository(context: Context) {
         return tabs.queryCount(TabQueryBuilder.count(sanitizeQuery(query), staleBefore(settings)))
     }
 
-    suspend fun tabsForQuery(query: LibraryQuery, limit: Int = MAX_IMPORT_TABS): List<TabItem> {
+    suspend fun tabsForQuery(query: LibraryQuery, limit: Int? = null): List<TabItem> {
         initialize()
         val settings = settingsStore.currentSettings()
         return tabs.queryTabs(
-            TabQueryBuilder.select(sanitizeQuery(query), staleBefore(settings), limit.coerceIn(1, MAX_IMPORT_TABS)),
+            TabQueryBuilder.select(sanitizeQuery(query), staleBefore(settings), limit),
         ).map { it.toModel() }
     }
 
@@ -287,9 +288,8 @@ class TabDeckRepository(context: Context) {
         snapshotDeviceName: String = deviceName,
     ): Int {
         initialize()
-        val bounded = incoming.take(MAX_IMPORT_TABS)
         val now = System.currentTimeMillis()
-        val sanitized = bounded.mapNotNull { sanitizeIncomingTab(it, now) }
+        val sanitized = incoming.mapNotNull { sanitizeIncomingTab(it, now) }
         val valid = coalesceSourceIdentityDuplicates(sanitized)
         val appSettings = settingsStore.currentSettings()
         val shouldCategorize = autoCategorize ?: appSettings.autoCategorizeImports
@@ -338,7 +338,7 @@ class TabDeckRepository(context: Context) {
                     .toMutableMap()
                 val rootIdentity = snapshotBrowser
                     ?.takeIf { it.isLaunchTarget }
-                    ?.let { browser -> snapshotDeviceName.singleLine(MAX_SOURCE_DEVICE_LENGTH).takeIf(String::isNotBlank)?.let { it to browser } }
+                    ?.let { browser -> snapshotDeviceName.singleLine().takeIf(String::isNotBlank)?.let { it to browser } }
                 // A complete, empty snapshot is meaningful: it archives every previously seen tab for that exact source identity.
                 if (rootIdentity != null) snapshotTabsByIdentity.putIfAbsent(rootIdentity, emptyList())
 
@@ -363,7 +363,7 @@ class TabDeckRepository(context: Context) {
                 ImportSession(
                     source = prepared.firstOrNull()?.browser ?: snapshotBrowser ?: incoming.firstOrNull()?.browser ?: BrowserId.UNKNOWN,
                     sourceLabel = sourceLabel.ifBlank { prepared.firstOrNull()?.browser?.displayName ?: "Import" },
-                    received = incoming.size.coerceAtMost(MAX_IMPORT_TABS),
+                    received = incoming.size,
                     accepted = prepared.size,
                     rejected = (incoming.size - prepared.size).coerceAtLeast(0),
                     deviceName = deviceName,
@@ -406,7 +406,7 @@ class TabDeckRepository(context: Context) {
 
     suspend fun pruneTrash(olderThanDays: Int): Int {
         initialize()
-        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(olderThanDays.coerceIn(1, 3650).toLong())
+        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(olderThanDays.coerceAtLeast(1).toLong())
         val removed = tabs.pruneTrash(cutoff)
         if (removed > 0) refreshWidgets()
         return removed
@@ -451,9 +451,8 @@ class TabDeckRepository(context: Context) {
         if (ids.isEmpty()) return 0
         initialize()
         val cleanTags = requestedTags.asSequence()
-            .map { it.singleLine(MAX_TAG_LENGTH) }
+            .map { it.singleLine() }
             .filter(String::isNotBlank)
-            .take(MAX_TAGS)
             .toCollection(linkedSetOf())
         if (cleanTags.isEmpty() && mode != TagEditMode.REPLACE) return 0
         var changed = 0
@@ -463,7 +462,7 @@ class TabDeckRepository(context: Context) {
                 val updated = existing.map { entity ->
                     val model = entity.toModel()
                     val nextTags = when (mode) {
-                        TagEditMode.ADD -> (model.tags + cleanTags).take(MAX_TAGS).toSet()
+                        TagEditMode.ADD -> (model.tags + cleanTags).toSet()
                         TagEditMode.REMOVE -> model.tags - cleanTags
                         TagEditMode.REPLACE -> cleanTags
                     }
@@ -508,18 +507,15 @@ class TabDeckRepository(context: Context) {
         initialize()
         val validation = RegexCategorizer.validate(rule)
         require(validation.valid) { validation.error }
-        val state = currentState()
-        require(state.rules.any { it.id == rule.id } || state.rules.size < MAX_RULES) { "A maximum of $MAX_RULES rules is supported" }
         val destination = ensureGroup(rule.destinationGroup)
         val clean = rule.copy(
-            name = rule.name.singleLine(MAX_RULE_NAME_LENGTH).ifBlank { "Untitled rule" },
-            pattern = rule.pattern.trim().take(MAX_RULE_PATTERN_LENGTH),
+            name = rule.name.singleLine().ifBlank { "Untitled rule" },
+            pattern = rule.pattern.trim(),
             destinationGroup = destination,
-            priority = rule.priority.coerceIn(0, 99_999),
+            priority = rule.priority,
             addTags = rule.addTags.asSequence()
-                .map { it.singleLine(MAX_TAG_LENGTH) }
+                .map { it.singleLine() }
                 .filter(String::isNotBlank)
-                .take(MAX_TAGS)
                 .toCollection(linkedSetOf()),
         )
         rules.upsert(clean.toEntity())
@@ -529,10 +525,8 @@ class TabDeckRepository(context: Context) {
         initialize()
         val validation = RegexCategorizer.validate(rule)
         require(validation.valid) { validation.error }
-        return tabsForQuery(
-            LibraryQuery(statuses = setOf(TabStatus.ACTIVE)),
-            MAX_IMPORT_TABS,
-        ).count { RegexCategorizer.matches(it, rule) }
+        return tabsForQuery(LibraryQuery(statuses = setOf(TabStatus.ACTIVE)))
+            .count { RegexCategorizer.matches(it, rule) }
     }
 
     suspend fun deleteRule(id: String) {
@@ -544,17 +538,16 @@ class TabDeckRepository(context: Context) {
         initialize()
         val state = currentState()
         val existing = state.groups.firstOrNull { it.id == group.id }
-        require(existing != null || state.groups.size < MAX_GROUPS) { "A maximum of $MAX_GROUPS groups is supported" }
-        val requestedName = group.name.singleLine(MAX_GROUP_LENGTH).ifBlank { "Untitled" }
+        val requestedName = group.name.singleLine().ifBlank { "Untitled" }
         val effectiveName = if (existing?.isSystem == true) existing.name else requestedName
         require(state.groups.none { it.id != group.id && it.name.equals(effectiveName, ignoreCase = true) }) {
             "A group named '$effectiveName' already exists"
         }
         val clean = group.copy(
             name = effectiveName,
-            colorKey = group.colorKey.singleLine(32).ifBlank { "indigo" },
-            iconKey = group.iconKey.singleLine(32).ifBlank { "folder" },
-            sortOrder = group.sortOrder.coerceIn(0, 100_000),
+            colorKey = group.colorKey.singleLine().ifBlank { "indigo" },
+            iconKey = group.iconKey.singleLine().ifBlank { "folder" },
+            sortOrder = group.sortOrder,
             isSystem = existing?.isSystem ?: false,
         )
         database.withTransaction {
@@ -581,17 +574,17 @@ class TabDeckRepository(context: Context) {
         refreshWidgets()
     }
 
-    suspend fun duplicateClusters(mode: DedupeMode, limitClusters: Int = 250): List<DuplicateCluster> {
+    suspend fun duplicateClusters(mode: DedupeMode): List<DuplicateCluster> {
         initialize()
         val settings = settingsStore.currentSettings()
-        val rows = duplicateRows(mode, limitClusters.coerceIn(1, MAX_DUPLICATE_CLUSTERS), settings.stripTrackingParameters)
+        val rows = duplicateRows(mode, settings.stripTrackingParameters)
         return DedupeEngine.clusters(rows, mode, settings.stripTrackingParameters)
     }
 
     suspend fun deduplicate(mode: DedupeMode, keepPolicy: KeepPolicy, mergeMetadata: Boolean = true): Int {
         initialize()
         val settings = settingsStore.currentSettings()
-        val activeDuplicates = duplicateRows(mode, MAX_DUPLICATE_CLUSTERS, settings.stripTrackingParameters)
+        val activeDuplicates = duplicateRows(mode, settings.stripTrackingParameters)
         val plan = DedupeEngine.plan(
             activeDuplicates,
             mode,
@@ -610,10 +603,10 @@ class TabDeckRepository(context: Context) {
     suspend fun upsertSmartView(view: SmartView) {
         initialize()
         val clean = view.copy(
-            name = view.name.singleLine(MAX_VIEW_NAME_LENGTH).ifBlank { "Untitled view" },
-            iconKey = view.iconKey.singleLine(32).ifBlank { "filter" },
-            colorKey = view.colorKey.singleLine(32).ifBlank { "indigo" },
-            sortOrder = view.sortOrder.coerceIn(0, 100_000),
+            name = view.name.singleLine().ifBlank { "Untitled view" },
+            iconKey = view.iconKey.singleLine().ifBlank { "filter" },
+            colorKey = view.colorKey.singleLine().ifBlank { "indigo" },
+            sortOrder = view.sortOrder,
             query = sanitizeQuery(view.query),
         )
         smartViews.upsert(clean.toEntity())
@@ -626,16 +619,16 @@ class TabDeckRepository(context: Context) {
 
     suspend fun saveDeck(deck: DeckDefinition, tabIds: Collection<String>) {
         initialize()
-        val distinctIds = tabIds.asSequence().distinct().take(MAX_DECK_TABS).toList()
+        val distinctIds = tabIds.asSequence().distinct().toList()
         require(distinctIds.isNotEmpty()) { "A deck needs at least one tab" }
         val existingIds = tabsByIds(distinctIds).mapTo(hashSetOf()) { it.id }
         require(existingIds.isNotEmpty()) { "None of the selected tabs still exist" }
         val now = System.currentTimeMillis()
         val clean = deck.copy(
-            name = deck.name.singleLine(MAX_DECK_NAME_LENGTH).ifBlank { "Untitled deck" },
-            description = deck.description.cleanMultiline(MAX_DECK_DESCRIPTION_LENGTH),
-            iconKey = deck.iconKey.singleLine(32).ifBlank { "deck" },
-            colorKey = deck.colorKey.singleLine(32).ifBlank { "violet" },
+            name = deck.name.singleLine().ifBlank { "Untitled deck" },
+            description = deck.description.cleanMultiline(),
+            iconKey = deck.iconKey.singleLine().ifBlank { "deck" },
+            colorKey = deck.colorKey.singleLine().ifBlank { "violet" },
             createdAtEpochMs = deck.createdAtEpochMs.coerceIn(0, now),
             updatedAtEpochMs = now,
         )
@@ -668,7 +661,7 @@ class TabDeckRepository(context: Context) {
 
     suspend fun mergeBackup(backup: AppSnapshot): Int {
         initialize()
-        backup.groups.take(MAX_GROUPS).forEach { importedGroup ->
+        backup.groups.forEach { importedGroup ->
             runCatching {
                 val state = currentState()
                 val sameName = state.groups.firstOrNull { it.name.equals(importedGroup.name, ignoreCase = true) }
@@ -678,13 +671,13 @@ class TabDeckRepository(context: Context) {
                 upsertGroup(candidate)
             }
         }
-        backup.rules.take(MAX_RULES).forEach { importedRule -> runCatching { upsertRule(importedRule) } }
+        backup.rules.forEach { importedRule -> runCatching { upsertRule(importedRule) } }
         val importedTabs = importTabs(
             backup.tabs.map { it.copy(browser = if (it.browser == BrowserId.UNKNOWN) BrowserId.FILE_IMPORT else it.browser) },
             autoCategorize = false,
             sourceLabel = "TabDeck backup",
         )
-        backup.smartViews.take(MAX_SMART_VIEWS).forEach { importedView ->
+        backup.smartViews.forEach { importedView ->
             runCatching { upsertSmartView(importedView) }
         }
         val restoredIdByBackupId = backup.tabs.associate { it.id to it.id }.toMutableMap()
@@ -699,31 +692,31 @@ class TabDeckRepository(context: Context) {
                     }
                 }
             }
-        backup.deckBackups.take(MAX_DECKS).forEach { backupDeck ->
+        backup.deckBackups.forEach { backupDeck ->
             val restoredIds = backupDeck.tabIds.mapNotNull(restoredIdByBackupId::get).distinct()
             if (restoredIds.isNotEmpty()) runCatching { saveDeck(backupDeck.deck, restoredIds) }
         }
         val now = System.currentTimeMillis()
         database.withTransaction {
-            backup.transferHistory.take(MAX_HISTORY_ITEMS).forEach { event ->
+            backup.transferHistory.forEach { event ->
                 history.insertTransfer(
                     event.copy(
-                        attempted = event.attempted.coerceIn(0, MAX_IMPORT_TABS),
-                        opened = event.opened.coerceIn(0, MAX_IMPORT_TABS),
-                        failed = event.failed.coerceIn(0, MAX_IMPORT_TABS),
-                        durationMs = event.durationMs.coerceIn(0, MAX_HISTORY_DURATION_MS),
+                        attempted = event.attempted.coerceAtLeast(0),
+                        opened = event.opened.coerceAtLeast(0),
+                        failed = event.failed.coerceAtLeast(0),
+                        durationMs = event.durationMs.coerceAtLeast(0),
                         createdAtEpochMs = event.createdAtEpochMs.coerceIn(0, now + MAX_FUTURE_CLOCK_SKEW_MS),
                     ).toEntity(),
                 )
             }
-            backup.importHistory.take(MAX_HISTORY_ITEMS).forEach { session ->
+            backup.importHistory.forEach { session ->
                 history.insertImport(
                     session.copy(
-                        sourceLabel = session.sourceLabel.singleLine(120),
-                        received = session.received.coerceIn(0, MAX_IMPORT_TABS),
-                        accepted = session.accepted.coerceIn(0, MAX_IMPORT_TABS),
-                        rejected = session.rejected.coerceIn(0, MAX_IMPORT_TABS),
-                        deviceName = session.deviceName.singleLine(MAX_SOURCE_DEVICE_LENGTH),
+                        sourceLabel = session.sourceLabel.singleLine(),
+                        received = session.received.coerceAtLeast(0),
+                        accepted = session.accepted.coerceAtLeast(0),
+                        rejected = session.rejected.coerceAtLeast(0),
+                        deviceName = session.deviceName.singleLine(),
                         createdAtEpochMs = session.createdAtEpochMs.coerceIn(0, now + MAX_FUTURE_CLOCK_SKEW_MS),
                     ).toEntity(),
                 )
@@ -776,14 +769,14 @@ class TabDeckRepository(context: Context) {
         refreshWidgets()
     }
 
-    private suspend fun duplicateRows(mode: DedupeMode, limitClusters: Int, stripTracking: Boolean): List<TabItem> {
+    private suspend fun duplicateRows(mode: DedupeMode, stripTracking: Boolean): List<TabItem> {
         if (mode == DedupeMode.NORMALIZED_URL && !stripTracking) {
-            return tabsForQuery(LibraryQuery(statuses = setOf(TabStatus.ACTIVE)), MAX_IMPORT_TABS)
+            return tabsForQuery(LibraryQuery(statuses = setOf(TabStatus.ACTIVE)))
         }
         val keys = when (mode) {
-            DedupeMode.EXACT_URL -> tabs.exactDuplicateKeys(limitClusters)
-            DedupeMode.NORMALIZED_URL -> tabs.normalizedDuplicateKeys(limitClusters)
-            DedupeMode.HOST_AND_PATH -> tabs.hostPathDuplicateKeys(limitClusters)
+            DedupeMode.EXACT_URL -> tabs.exactDuplicateKeys()
+            DedupeMode.NORMALIZED_URL -> tabs.normalizedDuplicateKeys()
+            DedupeMode.HOST_AND_PATH -> tabs.hostPathDuplicateKeys()
         }.map { it.key }
         if (keys.isEmpty()) return emptyList()
         return keys.chunked(SQLITE_IN_CHUNK).flatMap { chunk ->
@@ -800,14 +793,13 @@ class TabDeckRepository(context: Context) {
     }
 
     private suspend fun ensureGroup(name: String): String {
-        val clean = name.singleLine(MAX_GROUP_LENGTH).ifBlank { "Inbox" }
+        val clean = name.singleLine().ifBlank { "Inbox" }
         val state = currentState()
         state.groups.firstOrNull { it.name.equals(clean, ignoreCase = true) }?.let { return it.name }
-        require(state.groups.size < MAX_GROUPS) { "A maximum of $MAX_GROUPS groups is supported" }
         groups.upsert(
             GroupDefinition(
                 name = clean,
-                sortOrder = ((state.groups.maxOfOrNull { it.sortOrder } ?: 0) + 10).coerceAtMost(100_000),
+                sortOrder = (state.groups.maxOfOrNull { it.sortOrder } ?: 0) + 10,
             ).toEntity(),
         )
         return clean
@@ -818,24 +810,20 @@ class TabDeckRepository(context: Context) {
         val maxFuture = now + MAX_FUTURE_CLOCK_SKEW_MS
         return tab.copy(
             url = cleanUrl,
-            title = tab.title.singleLine(MAX_TITLE_LENGTH),
-            sourceGroup = tab.sourceGroup.singleLine(MAX_SOURCE_GROUP_LENGTH),
-            assignedGroup = tab.assignedGroup.singleLine(MAX_GROUP_LENGTH).ifBlank { "Inbox" },
-            notes = tab.notes.cleanMultiline(MAX_NOTES_LENGTH),
-            tags = tab.tags.asSequence()
-                .map { it.singleLine(MAX_TAG_LENGTH) }
-                .filter(String::isNotBlank)
-                .take(MAX_TAGS)
-                .toCollection(linkedSetOf()),
+            title = tab.title.singleLine(MAX_TAB_TITLE_CHARS),
+            sourceGroup = tab.sourceGroup.singleLine(MAX_GROUP_LABEL_CHARS),
+            assignedGroup = tab.assignedGroup.singleLine(MAX_GROUP_LABEL_CHARS).ifBlank { "Inbox" },
+            notes = tab.notes.cleanMultiline(MAX_NOTES_CHARS),
+            tags = tab.tags.asSequence().boundedTags(),
             createdAtEpochMs = tab.createdAtEpochMs.coerceIn(0L, maxFuture),
             importedAtEpochMs = tab.importedAtEpochMs.coerceIn(0L, now),
             lastSeenAtEpochMs = tab.lastSeenAtEpochMs.coerceIn(0L, maxFuture),
             snoozedUntilEpochMs = tab.snoozedUntilEpochMs
-                ?.coerceIn(now, MAX_SNOOZE_EPOCH_MS)
+                ?.coerceAtLeast(now)
                 ?.takeIf { tab.status == TabStatus.SNOOZED },
-            sourceDevice = tab.sourceDevice.singleLine(MAX_SOURCE_DEVICE_LENGTH),
-            sourceTabId = tab.sourceTabId.singleLine(MAX_SOURCE_TAB_ID_LENGTH),
-            transferCount = tab.transferCount.coerceIn(0, MAX_TRANSFER_COUNT),
+            sourceDevice = tab.sourceDevice.singleLine(MAX_SOURCE_DEVICE_CHARS),
+            sourceTabId = tab.sourceTabId.singleLine(MAX_SOURCE_TAB_ID_CHARS),
+            transferCount = tab.transferCount.coerceAtLeast(0),
         )
     }
 
@@ -857,8 +845,12 @@ class TabDeckRepository(context: Context) {
                 result[previousIndex] = item.copy(
                     id = previous.id,
                     pinned = previous.pinned || item.pinned,
-                    notes = listOf(previous.notes, item.notes).filter(String::isNotBlank).distinct().joinToString("\n\n"),
-                    tags = previous.tags + item.tags,
+                    notes = listOf(previous.notes, item.notes)
+                        .filter(String::isNotBlank)
+                        .distinct()
+                        .joinToString("\n\n")
+                        .cleanMultiline(MAX_NOTES_CHARS),
+                    tags = (previous.tags.asSequence() + item.tags.asSequence()).boundedTags(),
                     createdAtEpochMs = minOf(previous.createdAtEpochMs, item.createdAtEpochMs),
                     importedAtEpochMs = minOf(previous.importedAtEpochMs, item.importedAtEpochMs),
                     lastSeenAtEpochMs = maxOf(previous.lastSeenAtEpochMs, item.lastSeenAtEpochMs),
@@ -869,23 +861,40 @@ class TabDeckRepository(context: Context) {
     }
 
     private fun sanitizeQuery(query: LibraryQuery): LibraryQuery = query.copy(
-        search = query.search.singleLine(MAX_SEARCH_LENGTH),
-        groups = query.groups.asSequence().map { it.singleLine(MAX_GROUP_LENGTH) }.filter(String::isNotBlank).take(128).toSet(),
-        sourceDevices = query.sourceDevices.asSequence().map { it.singleLine(MAX_SOURCE_DEVICE_LENGTH) }.filter(String::isNotBlank).take(128).toSet(),
-        sourceGroups = query.sourceGroups.asSequence().map { it.singleLine(MAX_SOURCE_GROUP_LENGTH) }.filter(String::isNotBlank).take(128).toSet(),
-        tags = query.tags.asSequence().map { it.singleLine(MAX_TAG_LENGTH) }.filter(String::isNotBlank).take(32).toSet(),
+        search = query.search.singleLine(),
+        groups = query.groups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        sourceDevices = query.sourceDevices.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        sourceGroups = query.sourceGroups.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
+        tags = query.tags.asSequence().map { it.singleLine() }.filter(String::isNotBlank).toSet(),
     )
 
     private fun staleBefore(settings: AppSettings): Long =
-        System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.staleAfterDays.coerceIn(1, 3650).toLong())
+        System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.staleAfterDays.coerceAtLeast(1).toLong())
 
     private fun Set<String>.chunkedIds(): List<Set<String>> =
         asSequence().chunked(SQLITE_IN_CHUNK).map { it.toSet() }.toList()
 
-    private fun String.singleLine(maxLength: Int): String =
-        replace(Regex("""[\p{Cc}\p{Cf}]+"""), " ").replace(Regex("""\s+"""), " ").trim().take(maxLength)
+    private fun Sequence<String>.boundedTags(): Set<String> {
+        val result = linkedSetOf<String>()
+        var remaining = MAX_TAG_TEXT_BUDGET
+        for (raw in this) {
+            val clean = raw.singleLine(MAX_TAG_CHARS)
+            if (clean.isBlank() || clean in result) continue
+            val storageCost = clean.length + 3
+            if (storageCost > remaining) break
+            result += clean
+            remaining -= storageCost
+        }
+        return result
+    }
 
-    private fun String.cleanMultiline(maxLength: Int): String =
+    private fun String.singleLine(maxLength: Int = Int.MAX_VALUE): String =
+        replace(Regex("""[\p{Cc}\p{Cf}]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .take(maxLength)
+
+    private fun String.cleanMultiline(maxLength: Int = Int.MAX_VALUE): String =
         replace("\r\n", "\n")
             .replace('\r', '\n')
             .filter { it == '\n' || !it.isISOControl() }
@@ -893,34 +902,16 @@ class TabDeckRepository(context: Context) {
             .take(maxLength)
 
     companion object {
-        private const val MAX_IMPORT_TABS = 25_000
         private const val SQLITE_IN_CHUNK = 800
         private const val RULE_BATCH_SIZE = 500
-        private const val MAX_DUPLICATE_CLUSTERS = 25_000
-        private const val MAX_TITLE_LENGTH = 500
-        private const val MAX_SOURCE_GROUP_LENGTH = 120
-        private const val MAX_GROUP_LENGTH = 80
-        private const val MAX_NOTES_LENGTH = 10_000
-        private const val MAX_TAGS = 32
-        private const val MAX_GROUPS = 500
-        private const val MAX_RULES = 250
-        private const val MAX_RULE_NAME_LENGTH = 80
-        private const val MAX_RULE_PATTERN_LENGTH = 512
-        private const val MAX_TAG_LENGTH = 40
-        private const val MAX_SOURCE_DEVICE_LENGTH = 120
-        private const val MAX_SOURCE_TAB_ID_LENGTH = 160
-        private const val MAX_TRANSFER_COUNT = 1_000_000
-        private const val MAX_HISTORY_ITEMS = 100
-        private const val MAX_HISTORY_DURATION_MS = 24 * 60 * 60_000L
         private const val MAX_FUTURE_CLOCK_SKEW_MS = 5 * 60_000L
-        private const val MAX_SNOOZE_EPOCH_MS = 4_102_444_800_000L
-        private const val MAX_VIEW_NAME_LENGTH = 80
-        private const val MAX_DECK_NAME_LENGTH = 100
-        private const val MAX_DECK_DESCRIPTION_LENGTH = 2_000
-        private const val MAX_DECK_TABS = 5_000
-        private const val MAX_SMART_VIEWS = 250
-        private const val MAX_DECKS = 250
-        private const val MAX_SEARCH_LENGTH = 500
+        private const val MAX_TAB_TITLE_CHARS = 4_096
+        private const val MAX_GROUP_LABEL_CHARS = 1_024
+        private const val MAX_NOTES_CHARS = 65_536
+        private const val MAX_TAG_CHARS = 1_024
+        private const val MAX_TAG_TEXT_BUDGET = 32_768
+        private const val MAX_SOURCE_DEVICE_CHARS = 1_024
+        private const val MAX_SOURCE_TAB_ID_CHARS = 2_048
 
         fun browserForPackage(packageName: String?): BrowserId =
             BrowserId.entries.firstOrNull { it.packageName == packageName } ?: BrowserId.UNKNOWN

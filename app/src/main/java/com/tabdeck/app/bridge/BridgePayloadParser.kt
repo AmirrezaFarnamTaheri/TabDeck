@@ -7,7 +7,7 @@ import com.tabdeck.app.model.TabItem
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Strict, bounded decoder for extension and Desktop Link snapshots. */
+/** Strict decoder for extension and Desktop Link snapshots. */
 object BridgePayloadParser {
     data class ParsedImport(
         val tabs: List<TabItem>,
@@ -35,7 +35,7 @@ object BridgePayloadParser {
         val tabArray = root.optJSONArray("tabs") ?: JSONArray()
 
         val parsed = buildList {
-            for (index in 0 until minOf(tabArray.length(), MAX_TABS_PER_IMPORT)) {
+            for (index in 0 until tabArray.length()) {
                 val item = tabArray.optJSONObject(index) ?: continue
                 val url = UrlNormalizer.sanitizeWebUrl(item.optString("url")) ?: continue
                 val itemBrowserWire = item.optString("browser")
@@ -92,7 +92,6 @@ object BridgePayloadParser {
     private fun safeTimestamp(value: Long, now: Long): Long = value.coerceIn(MIN_REASONABLE_EPOCH_MS, now + MAX_FUTURE_SKEW_MS)
 
     private const val CURRENT_IDENTITY_VERSION = 1
-    private const val MAX_TABS_PER_IMPORT = 25_000
     private const val MAX_SOURCE_SESSION_ID_LENGTH = 256
     private const val MIN_REASONABLE_EPOCH_MS = 946_684_800_000L // 2000-01-01
     private const val MAX_FUTURE_SKEW_MS = 86_400_000L

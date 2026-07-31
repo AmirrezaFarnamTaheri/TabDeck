@@ -222,17 +222,17 @@ interface TabDao {
     """)
     fun observeStats(staleBefore: Long): Flow<DashboardStatsRow>
 
-    @Query("SELECT assignedGroup AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY assignedGroup ORDER BY count DESC, assignedGroup LIMIT :limit")
-    fun observeGroupCounts(limit: Int = 24): Flow<List<FacetCountRow>>
+    @Query("SELECT assignedGroup AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY assignedGroup ORDER BY count DESC, assignedGroup")
+    fun observeGroupCounts(): Flow<List<FacetCountRow>>
 
-    @Query("SELECT browser AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY browser ORDER BY count DESC, browser LIMIT :limit")
-    fun observeBrowserCounts(limit: Int = 24): Flow<List<FacetCountRow>>
+    @Query("SELECT browser AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY browser ORDER BY count DESC, browser")
+    fun observeBrowserCounts(): Flow<List<FacetCountRow>>
 
-    @Query("SELECT sourceDevice AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' AND sourceDevice != '' GROUP BY sourceDevice ORDER BY count DESC, sourceDevice LIMIT :limit")
-    fun observeSourceDeviceCounts(limit: Int = 32): Flow<List<FacetCountRow>>
+    @Query("SELECT sourceDevice AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' AND sourceDevice != '' GROUP BY sourceDevice ORDER BY count DESC, sourceDevice")
+    fun observeSourceDeviceCounts(): Flow<List<FacetCountRow>>
 
-    @Query("SELECT sourceGroup AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' AND sourceGroup != '' GROUP BY sourceGroup ORDER BY count DESC, sourceGroup LIMIT :limit")
-    fun observeSourceGroupCounts(limit: Int = 32): Flow<List<FacetCountRow>>
+    @Query("SELECT sourceGroup AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' AND sourceGroup != '' GROUP BY sourceGroup ORDER BY count DESC, sourceGroup")
+    fun observeSourceGroupCounts(): Flow<List<FacetCountRow>>
 
     @Query("SELECT COALESCE(SUM(copies), 0) FROM (SELECT COUNT(*) - 1 AS copies FROM tabs WHERE status = 'ACTIVE' GROUP BY normalizedUrl HAVING COUNT(*) > 1)")
     fun observeDuplicateCopies(): Flow<Int>
@@ -255,14 +255,14 @@ interface TabDao {
     @Query("UPDATE tabs SET status = 'ARCHIVED', snoozedUntilEpochMs = NULL WHERE sourceDevice = :sourceDevice AND browser = :browser AND sourceTabId != ''")
     suspend fun archiveAllSourceTabs(sourceDevice: String, browser: String): Int
 
-    @Query("SELECT url AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY url HAVING COUNT(*) > 1 ORDER BY count DESC LIMIT :limit")
-    suspend fun exactDuplicateKeys(limit: Int): List<DuplicateKeyRow>
+    @Query("SELECT url AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY url HAVING COUNT(*) > 1 ORDER BY count DESC")
+    suspend fun exactDuplicateKeys(): List<DuplicateKeyRow>
 
-    @Query("SELECT normalizedUrl AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY normalizedUrl HAVING COUNT(*) > 1 ORDER BY count DESC LIMIT :limit")
-    suspend fun normalizedDuplicateKeys(limit: Int): List<DuplicateKeyRow>
+    @Query("SELECT normalizedUrl AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY normalizedUrl HAVING COUNT(*) > 1 ORDER BY count DESC")
+    suspend fun normalizedDuplicateKeys(): List<DuplicateKeyRow>
 
-    @Query("SELECT hostPath AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY hostPath HAVING COUNT(*) > 1 ORDER BY count DESC LIMIT :limit")
-    suspend fun hostPathDuplicateKeys(limit: Int): List<DuplicateKeyRow>
+    @Query("SELECT hostPath AS `key`, COUNT(*) AS count FROM tabs WHERE status = 'ACTIVE' GROUP BY hostPath HAVING COUNT(*) > 1 ORDER BY count DESC")
+    suspend fun hostPathDuplicateKeys(): List<DuplicateKeyRow>
 
     @Query("SELECT * FROM tabs WHERE status = 'ACTIVE' AND url IN (:keys)")
     suspend fun tabsForExactKeys(keys: List<String>): List<TabEntity>
@@ -372,16 +372,16 @@ interface GroupDao {
 
 @Dao
 interface HistoryDao {
-    @Query("SELECT * FROM transfer_history ORDER BY createdAtEpochMs DESC LIMIT 100")
+    @Query("SELECT * FROM transfer_history ORDER BY createdAtEpochMs DESC")
     fun observeTransfers(): Flow<List<TransferEntity>>
 
-    @Query("SELECT * FROM import_history ORDER BY createdAtEpochMs DESC LIMIT 100")
+    @Query("SELECT * FROM import_history ORDER BY createdAtEpochMs DESC")
     fun observeImports(): Flow<List<ImportEntity>>
 
-    @Query("SELECT * FROM transfer_history ORDER BY createdAtEpochMs DESC LIMIT 100")
+    @Query("SELECT * FROM transfer_history ORDER BY createdAtEpochMs DESC")
     suspend fun listTransfers(): List<TransferEntity>
 
-    @Query("SELECT * FROM import_history ORDER BY createdAtEpochMs DESC LIMIT 100")
+    @Query("SELECT * FROM import_history ORDER BY createdAtEpochMs DESC")
     suspend fun listImports(): List<ImportEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
