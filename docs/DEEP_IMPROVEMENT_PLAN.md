@@ -42,12 +42,14 @@ No cloud backend, account system, telemetry service, application store, or hoste
 ## Completed release and identity work
 
 - The original stacked-tab TabDeck mark is used by Android launcher icons, Android themed icons, Firefox, Chromium, Desktop Link, and release branding archives.
+- Browser extension manifest raster icons use the same mark at every declared size.
 - GitHub Releases require no protected environment or repository secrets.
 - A repository-published community key provides stable Android upgrade signatures.
 - The key is intentionally public and is not presented as exclusive publisher authentication.
-- Each tag release builds one minified APK; no AAB or application-store path is produced.
+- Each release builds one minified APK; no AAB or application-store path is produced.
 - Release assets include the APK, connectors, Desktop Link, branding, deterministic source, validation report, manifest, checksums, and optional R8 mapping.
-- The workflow verifies the source/tag binding, public key fingerprint, APK alignment and signature, archive integrity, and checksums.
+- The workflow verifies the source/tag binding, public key fingerprint, APK alignment and signature, connector DOM contracts, archive integrity, and checksums.
+- Merging a verified version/release change into `main` automatically creates or verifies the version tag and publishes the GitHub Release.
 
 Community certificate SHA-256:
 
@@ -62,22 +64,25 @@ Pull-request CI runs:
 - executable Kotlin core checks;
 - static cross-component validation;
 - secretless release and branding validation;
+- browser connector DOM-binding validation;
 - performance-budget configuration validation;
 - PowerShell parsing and Desktop Link contract tests;
 - Android unit tests;
-- Android lint;
-- debug APK assembly;
-- deterministic source, connector, Desktop Link, and branding packaging;
-- artifact/report upload.
+- debug and minified release lint/build;
+- community APK alignment and signature verification;
+- deterministic APK, source, connector, Desktop Link, and branding packaging;
+- checksum verification and artifact/report upload.
 
-Tag release additionally runs:
+The automatic `main` release additionally runs:
 
+- version-tag derivation and source binding;
 - community-key materialization and fingerprint verification;
 - release-mode unit tests and lint;
 - minified signed APK assembly;
 - APK alignment and signature verification;
 - release-manifest provenance checks;
 - SHA-256 verification;
+- version-tag creation or verification;
 - GitHub Release publication.
 
 ## Architectural invariants
@@ -97,12 +102,13 @@ Tag release additionally runs:
 - [x] typed backup classification and rejection
 - [x] loopback-only bridge and ADB forwarding
 - [x] shared connector runtime
+- [x] connector DOM-binding regression gate
 - [x] Windows destination-before-close and forward recovery
 - [x] fixed performance budgets
 - [x] Android, connector, Desktop Link, and branding identity
 - [x] secretless stable community APK signing
-- [x] APK-only GitHub Release workflow
+- [x] APK-only automatic GitHub Release workflow
 - [x] deterministic release archives, manifest, and checksums
-- [x] CI packaging and release-contract validation
+- [x] CI release-mode APK packaging and signature validation
 
-The project is complete when the final branch head passes CI and is merged. Publishing v1.0.0 then requires only creating or dispatching the matching GitHub tag.
+The project is complete when the final branch head passes CI and is merged. That merge triggers the Release workflow, which creates or verifies `v1.0.0` at the merged commit and publishes the final GitHub release automatically.
