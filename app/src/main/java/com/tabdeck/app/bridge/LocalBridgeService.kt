@@ -17,7 +17,6 @@ import com.tabdeck.app.model.BridgeSession
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.BufferedInputStream
-import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.net.ServerSocket
@@ -114,7 +113,7 @@ class LocalBridgeService : Service() {
         executor.execute {
             try {
                 val state = runBlocking { repository.currentState() }
-                sessionScope = state.settings.bridgeScope
+                sessionScope = BridgeScope.THIS_DEVICE
                 val now = System.currentTimeMillis()
                 sessionExpiry = now + state.settings.bridgeSessionMinutes.coerceIn(5, 120) * 60_000L
                 runBlocking {
@@ -135,11 +134,7 @@ class LocalBridgeService : Service() {
                     ),
                 )
 
-                val bindAddress = if (sessionScope == BridgeScope.THIS_DEVICE) {
-                    InetAddress.getLoopbackAddress()
-                } else {
-                    InetAddress.getByName("0.0.0.0")
-                }
+                val bindAddress = InetAddress.getLoopbackAddress()
                 ServerSocket().apply {
                     reuseAddress = true
                     bind(InetSocketAddress(bindAddress, BridgeNetwork.PORT), SOCKET_BACKLOG)
@@ -371,7 +366,6 @@ class LocalBridgeService : Service() {
             append("X-TabDeck-Request-Id: $requestId\r\n")
             if (originAllowed(origin) && origin != null) {
                 append("Access-Control-Allow-Origin: $origin\r\n")
-                append("Access-Control-Allow-Private-Network: true\r\n")
             }
             append("Access-Control-Allow-Headers: Content-Type, X-TabDeck-Token, X-TabDeck-Request-Id\r\n")
             append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
@@ -384,13 +378,7 @@ class LocalBridgeService : Service() {
         }
     }
 
-    private fun isAllowedClient(address: InetAddress): Boolean = when (sessionScope) {
-        BridgeScope.THIS_DEVICE -> address.isLoopbackAddress
-        BridgeScope.LOCAL_NETWORK -> address.isLoopbackAddress || address.isSiteLocalAddress || address.isLinkLocalAddress || address.isIpv6UniqueLocal()
-    }
-
-    private fun InetAddress.isIpv6UniqueLocal(): Boolean =
-        this is Inet6Address && address.isNotEmpty() && (address[0].toInt() and 0xFE) == 0xFC
+    private fun isAllowedClient(address: InetAddress): Boolean = address.isLoopbackAddress
 
     private fun originAllowed(origin: String?): Boolean {
         if (origin == null) return true

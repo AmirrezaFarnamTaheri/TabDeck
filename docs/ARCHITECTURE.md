@@ -67,7 +67,8 @@ Official references:
 
 ### Write invariants
 
-- Source identity is `(sourceDevice, browser, sourceTabId)`.
+- TabDeck UUID is the durable primary key. Connector equality uses device, browser/profile, session/window, and external tab identity; `firstSeenAt` is metadata only.
+- External tab IDs are encoded with a one-way session fingerprint so browser restart ID reuse cannot merge unrelated tabs.
 - Repeated source snapshots update connector-owned metadata while preserving user-owned notes, tags, TabDeck group, status, and transfer counters.
 - A complete snapshot with zero tabs is meaningful and can reconcile previously stored source tabs according to policy.
 - System Inbox uses a stable protected ID.
@@ -122,12 +123,12 @@ A transfer is a copy/open request. TabDeck does not claim universal source-tab c
 
 The local bridge is a user-started foreground service. It:
 
-- binds to loopback or all interfaces according to explicit scope;
+- binds only to loopback; desktop clients use an explicit ADB port forward;
 - expires after 5–120 minutes;
 - exposes `/health` and `/api/v1|v2|v3/import`;
 - uses a rotating 64-hex token and constant-time comparison;
 - validates origin, method, path, content type, headers, request ID, body, UTF-8, source address, rate, and tab count;
-- allows only loopback/private/link-local clients for LAN scope;
+- rejects every non-loopback client; direct LAN exposure requires a future authenticated TLS design;
 - stops on expiry, explicit stop, Android service timeout, or process teardown.
 
 Android 15+ gives `dataSync` foreground services a shared six-hour allowance per 24 hours while the app is backgrounded and invokes `Service.onTimeout`; TabDeck sessions are intentionally much shorter and stop themselves. Official reference: <https://developer.android.com/develop/background-work/services/fgs/timeout>

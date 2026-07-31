@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 from versioning import load_version
 
@@ -27,22 +28,27 @@ CHECKS: list[str] = []
 
 
 def fail(message: str) -> None:
+    """Record a validation failure for the final project report."""
     ERRORS.append(message)
 
 
 def warn(message: str) -> None:
+    """Record a validation warning for the final project report."""
     WARNINGS.append(message)
 
 
 def ok(message: str) -> None:
+    """Record a successful validation check for the final project report."""
     CHECKS.append(message)
 
 
 def run(command: list[str], cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
+    """Run a repository command and capture its output without raising automatically."""
     return subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
 
 
 def files(patterns: Iterable[str]) -> list[Path]:
+    """Collect matching repository files while excluding generated directories."""
     found: set[Path] = set()
     for pattern in patterns:
         found.update(ROOT.rglob(pattern))
@@ -50,6 +56,7 @@ def files(patterns: Iterable[str]) -> list[Path]:
 
 
 def validate_xml() -> None:
+    """Parse all repository XML files and report malformed documents."""
     xml_files = files(["*.xml"])
     for path in xml_files:
         try:
@@ -60,6 +67,7 @@ def validate_xml() -> None:
 
 
 def validate_json() -> None:
+    """Parse all repository JSON files and report malformed documents."""
     json_files = files(["*.json"])
     for path in json_files:
         try:
@@ -71,10 +79,12 @@ def validate_json() -> None:
 
 class StrictHtmlParser(HTMLParser):
     def error(self, message: str) -> None:  # pragma: no cover - required by older Python
+        """Raise an HTML parsing error for compatibility with older Python versions."""
         raise ValueError(message)
 
 
 def validate_html() -> None:
+    """Parse all repository HTML files with the strict parser."""
     html_files = files(["*.html"])
     for path in html_files:
         parser = StrictHtmlParser(convert_charrefs=True)
@@ -87,6 +97,7 @@ def validate_html() -> None:
 
 
 def validate_javascript() -> None:
+    """Check JavaScript syntax with Node when it is available."""
     js_files = files(["*.js"])
     node = shutil.which("node")
     if not node:
@@ -100,6 +111,7 @@ def validate_javascript() -> None:
 
 
 def validate_shell() -> None:
+    """Check shell-script syntax with the system shell when available."""
     scripts = files(["*.sh"])
     shell = shutil.which("sh")
     if not shell:
@@ -113,6 +125,7 @@ def validate_shell() -> None:
 
 
 def validate_embedded_xaml() -> None:
+    """Parse XAML documents embedded in PowerShell here-strings."""
     ps_files = files(["*.ps1"])
     xaml_count = 0
     for path in ps_files:
@@ -131,6 +144,7 @@ def validate_embedded_xaml() -> None:
 
 def strip_kotlin_comments_and_strings(text: str) -> str:
     # Preserve line count while removing lexical regions that make delimiter checks noisy.
+    """Remove Kotlin lexical regions while preserving line counts."""
     pattern = re.compile(
         r'/\*.*?\*/|//[^\n]*|""".*?"""|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])\'',
         flags=re.DOTALL | re.MULTILINE,
@@ -139,6 +153,7 @@ def strip_kotlin_comments_and_strings(text: str) -> str:
 
 
 def balanced_delimiters(text: str, pairs: dict[str, str]) -> tuple[bool, str]:
+    """Check balanced delimiters and return failure location details."""
     reverse = {v: k for k, v in pairs.items()}
     stack: list[tuple[str, int]] = []
     for index, char in enumerate(text):
@@ -155,6 +170,7 @@ def balanced_delimiters(text: str, pairs: dict[str, str]) -> tuple[bool, str]:
 
 
 def validate_kotlin_structure() -> None:
+    """Check Kotlin and Gradle source structure for corruption."""
     kt_files = files(["*.kt", "*.kts"])
     for path in kt_files:
         raw = path.read_text(encoding="utf-8")
@@ -180,6 +196,7 @@ def validate_kotlin_structure() -> None:
 
 
 def validate_powershell_structure() -> None:
+    """Parse PowerShell files when a compatible runtime is available."""
     ps_files = files(["*.ps1"])
     pwsh = shutil.which("pwsh") or shutil.which("powershell")
     if pwsh:
@@ -199,6 +216,7 @@ def validate_powershell_structure() -> None:
 
 
 def validate_manifest_contracts() -> None:
+    """Validate Android manifest privacy and browser-discovery contracts."""
     android_manifest = ROOT / "app/src/main/AndroidManifest.xml"
     tree = ET.parse(android_manifest)
     root = tree.getroot()
@@ -233,6 +251,7 @@ def validate_manifest_contracts() -> None:
 
 
 def validate_product_version() -> None:
+    """Validate the authoritative product version and synchronized consumers."""
     try:
         version = load_version()
     except (OSError, ValueError) as exc:
@@ -246,8 +265,16 @@ def validate_product_version() -> None:
 
 
 def validate_extension_contracts() -> None:
+    """Validate extension manifests and synchronized shared runtime files."""
+    canonical_runtime = (ROOT / "extensions/shared/bridge-runtime.js").read_text(encoding="utf-8")
     for folder in [ROOT / "extensions/firefox-android", ROOT / "extensions/chromium-desktop"]:
         manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+        generated_runtime = folder / "bridge-runtime.js"
+        if not generated_runtime.is_file() or generated_runtime.read_text(encoding="utf-8") != canonical_runtime:
+            fail(f"Generated bridge runtime is missing or stale in {folder.relative_to(ROOT)}")
+        popup_html = (folder / "popup.html").read_text(encoding="utf-8")
+        if popup_html.find('src="bridge-runtime.js"') < 0 or popup_html.find('src="bridge-runtime.js"') > popup_html.find('src="popup.js"'):
+            fail(f"Shared bridge runtime must load before popup.js in {folder.relative_to(ROOT)}")
         if manifest.get("manifest_version") not in {2, 3}:
             fail(f"Unsupported extension manifest version in {folder.relative_to(ROOT)}")
         popup = manifest.get("browser_action", manifest.get("action", {})).get("default_popup")
@@ -256,10 +283,11 @@ def validate_extension_contracts() -> None:
         for icon_path in manifest.get("icons", {}).values():
             if not (folder / icon_path).exists():
                 fail(f"Missing extension icon {icon_path} in {folder.relative_to(ROOT)}")
-    ok("Validated extension manifest file references")
+    ok("Validated extension manifests and synchronized bridge runtime")
 
 
 def validate_gradle_wrapper_files() -> None:
+    """Validate the committed Gradle wrapper artifacts."""
     wrapper_jar = ROOT / "gradle/wrapper/gradle-wrapper.jar"
     if not wrapper_jar.is_file() or wrapper_jar.stat().st_size < 10_000:
         fail("Gradle wrapper JAR is missing or implausibly small")
@@ -268,6 +296,7 @@ def validate_gradle_wrapper_files() -> None:
 
 
 def validate_build_coordinates() -> None:
+    """Validate pinned build-tool and dependency coordinates."""
     root_build = (ROOT / "build.gradle.kts").read_text(encoding="utf-8")
     app_build = (ROOT / "app/build.gradle.kts").read_text(encoding="utf-8")
     wrapper = (ROOT / "gradle/wrapper/gradle-wrapper.properties").read_text(encoding="utf-8")
@@ -292,6 +321,7 @@ def validate_build_coordinates() -> None:
 
 
 def validate_text_integrity() -> None:
+    """Validate UTF-8 encoding and reject unexpected control bytes."""
     candidates = files(["*.kt", "*.kts", "*.js", "*.json", "*.xml", "*.html", "*.ps1", "*.sh", "*.md", "*.yml", "*.yaml", "*.properties"])
     for path in candidates:
         raw = path.read_bytes()
@@ -311,6 +341,7 @@ def validate_text_integrity() -> None:
 
 
 def validate_compose_icon_imports() -> None:
+    """Validate that used Compose icons have explicit imports."""
     checked = 0
     for path in files(["*.kt"]):
         text = path.read_text(encoding="utf-8")
@@ -326,6 +357,7 @@ def validate_compose_icon_imports() -> None:
 
 
 def validate_release_contracts() -> None:
+    """Validate cross-component runtime and release invariants."""
     bridge = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/LocalBridgeService.kt").read_text(encoding="utf-8")
     backup = (ROOT / "app/src/main/java/com/tabdeck/app/data/SnapshotJsonCodec.kt").read_text(encoding="utf-8")
     database = (ROOT / "app/src/main/java/com/tabdeck/app/data/local/TabDeckDatabase.kt").read_text(encoding="utf-8")
@@ -335,6 +367,10 @@ def validate_release_contracts() -> None:
     repository = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt").read_text(encoding="utf-8")
     view_model = (ROOT / "app/src/main/java/com/tabdeck/app/TabDeckViewModel.kt").read_text(encoding="utf-8")
     export_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabExportCodec.kt").read_text(encoding="utf-8")
+    bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")
+    bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+    endpoint_match = re.search(r'const val LOOPBACK_ENDPOINT\s*=\s*"([^"]+)"', bridge_network)
+    endpoint_host = urlsplit(endpoint_match.group(1)).hostname if endpoint_match else None
     checks = {
         "bridge API v3": 'request.path == "/api/v3/import"' in bridge and '.put("version", 3)' in bridge,
         "bridge compatibility": all(f'/api/v{version}/import' in bridge for version in (1, 2, 3)),
@@ -349,6 +385,10 @@ def validate_release_contracts() -> None:
         "human-readable exports": all(token in export_codec for token in ("MARKDOWN", "CSV", "NETSCAPE_BOOKMARKS", "csvCell")),
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,
         "UTF-8 bounded share import": "fun utf8Prefix" in view_model and "MAX_IMPORT_DOCUMENT_BYTES" in view_model,
+        "typed backup classification": "sealed interface DecodeResult" in backup and "decodeClassified" in view_model,
+        "loopback-only bridge": endpoint_host in {"127.0.0.1", "localhost", "::1"} and "0.0.0.0" not in bridge,
+        "session-scoped source identity": "SourceIdentity.encodeTabId" in bridge_parser,
+        "identity-version reconciliation guard": "identityVersion == CURRENT_IDENTITY_VERSION" in bridge_parser,
     }
     for label, passed in checks.items():
         if not passed:
@@ -366,10 +406,29 @@ def validate_release_contracts() -> None:
             fail(f"Extension endpoint compatibility is incomplete in {folder.relative_to(ROOT)}")
         if "testBridgeConnection" not in popup or "'/health'" not in popup:
             fail(f"Extension bridge preflight is missing in {folder.relative_to(ROOT)}")
-    ok("Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, and widget contracts")
+        if "sourceSessionId" not in popup or "getSourceSession" not in popup:
+            fail(f"Extension session-scoped tab identity is missing in {folder.relative_to(ROOT)}")
+    parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+    identity = (ROOT / "app/src/main/java/com/tabdeck/app/engine/SourceIdentity.kt").read_text(encoding="utf-8")
+    if "SourceIdentity.encodeTabId" not in parser or "sourceSessionId" not in parser:
+        fail("Bridge parser is missing session-scoped source identity")
+    if "sid1:" not in identity or "isSessionScoped" not in identity:
+        fail("Source identity codec contract is incomplete")
+    for required_file in (
+        ROOT / "tools/performance_budget.py",
+        ROOT / "tools/performance-budgets.json",
+        ROOT / "desktop-link/Test-TabDeckLink.ps1",
+        ROOT / "docs/adr/0001-durable-source-identity.md",
+        ROOT / "docs/adr/0002-loopback-bridge-trust-boundary.md",
+        ROOT / "docs/adr/0003-release-provenance.md",
+    ):
+        if not required_file.is_file():
+            fail(f"Missing verification contract: {required_file.relative_to(ROOT)}")
+    ok("Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, widget, and source-identity contracts")
 
 
 def validate_workflow_contracts() -> None:
+    """Validate CI and release workflow safety contracts."""
     workflows = {
         "CI": ROOT / ".github/workflows/ci.yml",
         "Release": ROOT / ".github/workflows/release.yml",
@@ -403,13 +462,25 @@ def validate_workflow_contracts() -> None:
         "actions/upload-artifact@v7",
         "actions/attest@v4",
         "gh release create",
+        "environment: release",
+        "artifact-metadata: write",
+        "TABDECK_RELEASE_CERT_SHA256",
+        "git rev-list -n 1",
+        "keytool -printcert -jarfile",
+        "--source-commit",
+        "--signing-cert-sha256",
     ):
         if token not in release:
             fail(f"Release workflow contract missing: {token}")
+    packager = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
+    for token in ('"schemaVersion": 2', '"sourceCommit"', '"releaseTag"', '"signingCertificateSha256"'):
+        if token not in packager:
+            fail(f"Release manifest provenance contract missing: {token}")
     ok("Validated CI and signed-release workflow contracts")
 
 
 def validate_no_obvious_secrets() -> None:
+    """Scan source and documentation for obvious embedded secrets."""
     candidates = files(["*.kt", "*.kts", "*.js", "*.json", "*.ps1", "*.md", "*.xml"])
     patterns = {
         "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
@@ -425,6 +496,7 @@ def validate_no_obvious_secrets() -> None:
 
 
 def main() -> int:
+    """Run the command-line entry point and return its exit status."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", type=Path, help="Write the validation report to this path")
     args = parser.parse_args()

@@ -171,14 +171,23 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
             messages.emit("The selected file is empty or unreadable")
             return@launch
         }
-        val backup = SnapshotJsonCodec.decodeOrNull(text)
-        if (backup != null) {
-            val imported = repository.mergeBackup(backup)
-            messages.emit("Merged $imported tabs from backup")
-        } else {
-            val urls = UrlExtractor.extract(text)
-            val imported = repository.importTabs(urls.map { TabItem(url = it, browser = BrowserId.FILE_IMPORT) })
-            messages.emit("Imported $imported tabs from file")
+        when (val decoded = SnapshotJsonCodec.decodeClassified(text)) {
+            is SnapshotJsonCodec.DecodeResult.Success -> {
+                val imported = repository.mergeBackup(decoded.snapshot)
+                messages.emit("Merged $imported tabs from backup")
+            }
+            is SnapshotJsonCodec.DecodeResult.Rejected -> {
+                messages.emit("Backup rejected: ${decoded.reason}")
+            }
+            SnapshotJsonCodec.DecodeResult.NotBackup -> {
+                val urls = UrlExtractor.extract(text)
+                if (urls.isEmpty()) {
+                    messages.emit("No valid web URLs found in the selected file")
+                } else {
+                    val imported = repository.importTabs(urls.map { TabItem(url = it, browser = BrowserId.FILE_IMPORT) })
+                    messages.emit("Imported $imported tabs from file")
+                }
+            }
         }
     }
 
@@ -562,13 +571,12 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
         messages.emit("Bridge token rotated; reconnect extensions")
     }
 
-    fun bridgeEndpoints(): List<String> = when (state.value.settings.bridgeScope) {
-        BridgeScope.THIS_DEVICE -> BridgeNetwork.endpoints().filter { "127.0.0.1" in it }
-        BridgeScope.LOCAL_NETWORK -> BridgeNetwork.endpoints()
-    }
+    fun bridgeEndpoints(): List<String> = BridgeNetwork.endpoints()
 
     fun updateSettings(transform: (AppSettings) -> AppSettings) = launch(Dispatchers.IO) { repository.updateSettings(transform) }
-    fun setBridgeScope(value: BridgeScope) = updateSettings { it.copy(bridgeScope = value) }
+    fun setBridgeScope(value: BridgeScope) = updateSettings {
+        it.copy(bridgeScope = value.takeIf(BridgeScope::available) ?: BridgeScope.THIS_DEVICE)
+    }
     fun setBridgeSessionMinutes(value: Int) = updateSettings { it.copy(bridgeSessionMinutes = value.coerceIn(5, 120)) }
     fun setTransferPacing(value: TransferPacing) = updateSettings { it.copy(transferPacing = value) }
     fun setTransferBatchLimit(value: Int) = updateSettings { it.copy(transferBatchLimit = value.coerceIn(1, 250)) }

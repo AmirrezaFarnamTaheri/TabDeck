@@ -1,3 +1,4 @@
+// bridge-runtime.js accepts and canonicalizes /api/v1/import, /api/v2/import, and /api/v3/import.
 const $ = selector => document.querySelector(selector);
 const ui = {
   endpoint: $('#endpoint'), token: $('#token'), browser: $('#browser'), deviceName: $('#deviceName'),
@@ -18,27 +19,17 @@ async function fetchWithTimeout(url, options, timeoutMs = 20000) {
   finally { clearTimeout(timeout); }
 }
 
-function endpointInfo(value) {
-  const url = new URL(value);
-  if (url.protocol !== 'http:') throw new Error('Use TabDeck’s HTTP bridge endpoint.');
-  const host = url.hostname.toLowerCase();
-  const parts = host.split('.').map(Number);
-  const privateV4 = parts.length === 4 && parts.every(Number.isInteger) && (
-    parts[0] === 10 || parts[0] === 127 ||
-    (parts[0] === 192 && parts[1] === 168) ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-  );
-  const ipv6 = host.replace(/^\[|\]$/g, '');
-  const privateV6 = ipv6 === '::1' || /^(fc|fd|fe[89ab])/i.test(ipv6);
-  if (!(host === 'localhost' || privateV4 || privateV6)) {
-    throw new Error('Use the localhost or private-LAN address shown by TabDeck.');
+const sourceSessionStorage = {
+  reliable: Boolean(browser.storage.session),
+  get(defaults) {
+    return (browser.storage.session || browser.storage.local).get(defaults);
+  },
+  set(values) {
+    return (browser.storage.session || browser.storage.local).set(values);
   }
-  if (!['/api/v1/import', '/api/v2/import', '/api/v3/import'].includes(url.pathname)) throw new Error('Endpoint path must be /api/v3/import.');
-  url.pathname = '/api/v3/import';
-  url.search = '';
-  url.hash = '';
-  return { url: url.toString(), permission: `${url.origin}/*` };
-}
+};
+const getSourceSession = () => TabDeckBridgeRuntime.getSourceSession(sourceSessionStorage);
+const endpointInfo = TabDeckBridgeRuntime.endpointInfo;
 
 function normalized(raw, smart = true) {
   try {
@@ -168,8 +159,12 @@ async function sendSnapshot() {
     await readTabs();
     if (!preview.tabs.length) throw new Error('No transferable HTTP(S) tabs were found.');
     const capturedAt = Date.now();
+    const sourceSession = await getSourceSession();
     const body = {
-      browser: settings.browser, completeSnapshot: settings.scope === 'all' && !settings.excludePinned,
+      browser: settings.browser,
+      completeSnapshot: settings.scope === 'all' && !settings.excludePinned && sourceSession.reliable,
+      sourceSessionId: sourceSession.id,
+      identityVersion: 1,
       sourceLabel: `${settings.browser} Android`,
       deviceName: settings.deviceName || 'Android device',
       capturedAt,

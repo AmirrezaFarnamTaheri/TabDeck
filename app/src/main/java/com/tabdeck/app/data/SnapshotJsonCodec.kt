@@ -32,6 +32,12 @@ import java.util.UUID
 object SnapshotJsonCodec {
     const val VERSION = 3
 
+    sealed interface DecodeResult {
+        data class Success(val snapshot: AppSnapshot) : DecodeResult
+        data object NotBackup : DecodeResult
+        data class Rejected(val reason: String) : DecodeResult
+    }
+
     fun encode(snapshot: AppSnapshot): String = JSONObject().apply {
         put("format", "tabdeck-backup")
         put("version", VERSION)
@@ -46,35 +52,65 @@ object SnapshotJsonCodec {
         put("importHistory", JSONArray().apply { snapshot.importHistory.take(100).forEach { put(importToJson(it)) } })
     }.toString(2)
 
-    fun decode(raw: String?): AppSnapshot = decodeOrNull(raw) ?: AppSnapshot()
+    fun decode(raw: String?): AppSnapshot = (decodeClassified(raw) as? DecodeResult.Success)?.snapshot ?: AppSnapshot()
 
-    /** Strict decoder for user-selected files. Returns null instead of silently accepting unrelated JSON. */
-    fun decodeOrNull(raw: String?): AppSnapshot? {
-        if (raw.isNullOrBlank()) return null
-        return runCatching {
-            val root = JSONObject(raw)
-            val format = root.optString("format")
-            val version = root.optInt("version", 1)
-            require(format.isBlank() || format == "tabdeck-backup") { "Not a TabDeck backup" }
-            require(version in 1..VERSION) { "Unsupported TabDeck backup version" }
-            require(root.optJSONArray("tabs") != null) { "Backup has no tab inventory" }
-            val settingsObject = root.optJSONObject("settings")
-            val legacyToken = root.optString("bridgeToken").ifBlank { newBridgeToken() }
-            val settings = if (settingsObject != null) settingsFromJson(settingsObject) else AppSettings(
-                bridgeToken = legacyToken,
-                onboardingComplete = root.optBoolean("onboardingComplete", false),
-            )
-            AppSnapshot(
-                tabs = root.optJSONArray("tabs").toTabList(),
-                rules = root.optJSONArray("rules").toRuleList().ifEmpty { AppSnapshot.defaultRules() },
-                groups = root.optJSONArray("groups").toGroupList().ifEmpty { AppSnapshot.defaultGroups() },
-                smartViews = root.optJSONArray("smartViews").toSmartViewList(),
-                deckBackups = root.optJSONArray("decks").toDeckBackupList(),
-                transferHistory = root.optJSONArray("transferHistory").toTransferList(),
-                importHistory = root.optJSONArray("importHistory").toImportList(),
-                settings = settings,
-            )
-        }.getOrNull()
+    /** Backward-compatible nullable decoder. Prefer [decodeClassified] for user-selected input. */
+    fun decodeOrNull(raw: String?): AppSnapshot? =
+        (decodeClassified(raw) as? DecodeResult.Success)?.snapshot
+
+    /**
+     * Classifies input before decoding so malformed or unsupported backup-shaped JSON can never be
+     * reinterpreted as a plain URL list. Only definitively unrelated content returns [DecodeResult.NotBackup].
+     */
+    fun decodeClassified(raw: String?): DecodeResult {
+        val text = raw?.trim().orEmpty()
+        if (text.isBlank()) return DecodeResult.NotBackup
+        val hintedBackup = BackupInputClassifier.classify(text) == BackupInputClassifier.Kind.BACKUP_SHAPED
+        val root = try {
+            JSONObject(text)
+        } catch (_: Exception) {
+            return if (hintedBackup) DecodeResult.Rejected("Malformed TabDeck backup JSON") else DecodeResult.NotBackup
+        }
+
+        val format = root.optString("format")
+        val backupShape = format == BACKUP_FORMAT || (
+            root.has("tabs") && listOf("version", "settings", "bridgeToken", "rules", "groups", "decks")
+                .any(root::has)
+        )
+        if (!backupShape) return DecodeResult.NotBackup
+        if (format.isNotBlank() && format != BACKUP_FORMAT) {
+            return DecodeResult.Rejected("Unsupported backup format: $format")
+        }
+
+        val version = root.optInt("version", 1)
+        if (version !in 1..VERSION) {
+            return DecodeResult.Rejected("Unsupported TabDeck backup version: $version")
+        }
+        if (root.optJSONArray("tabs") == null) {
+            return DecodeResult.Rejected("Backup has no tab inventory")
+        }
+
+        return runCatching { DecodeResult.Success(decodeRoot(root)) }
+            .getOrElse { DecodeResult.Rejected(it.message ?: "Malformed TabDeck backup") }
+    }
+
+    private fun decodeRoot(root: JSONObject): AppSnapshot {
+        val settingsObject = root.optJSONObject("settings")
+        val legacyToken = root.optString("bridgeToken").ifBlank { newBridgeToken() }
+        val settings = if (settingsObject != null) settingsFromJson(settingsObject) else AppSettings(
+            bridgeToken = legacyToken,
+            onboardingComplete = root.optBoolean("onboardingComplete", false),
+        )
+        return AppSnapshot(
+            tabs = root.optJSONArray("tabs").toTabList(),
+            rules = root.optJSONArray("rules").toRuleList().ifEmpty { AppSnapshot.defaultRules() },
+            groups = root.optJSONArray("groups").toGroupList().ifEmpty { AppSnapshot.defaultGroups() },
+            smartViews = root.optJSONArray("smartViews").toSmartViewList(),
+            deckBackups = root.optJSONArray("decks").toDeckBackupList(),
+            transferHistory = root.optJSONArray("transferHistory").toTransferList(),
+            importHistory = root.optJSONArray("importHistory").toImportList(),
+            settings = settings,
+        )
     }
 
     private fun settingsToJson(value: AppSettings): JSONObject = JSONObject().apply {
@@ -102,7 +138,7 @@ object SnapshotJsonCodec {
 
     private fun settingsFromJson(value: JSONObject): AppSettings = AppSettings(
         bridgeToken = value.optString("bridgeToken").ifBlank { newBridgeToken() },
-        bridgeScope = enumOrDefault(value.optString("bridgeScope"), BridgeScope.THIS_DEVICE),
+        bridgeScope = BridgeScope.THIS_DEVICE,
         bridgeSessionMinutes = value.optInt("bridgeSessionMinutes", 20).coerceIn(5, 120),
         onboardingComplete = value.optBoolean("onboardingComplete", false),
         autoCategorizeImports = value.optBoolean("autoCategorizeImports", true),
@@ -389,4 +425,5 @@ object SnapshotJsonCodec {
     private fun JSONObject.optLongOrNull(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null
     private inline fun <reified T : Enum<T>> enumOrDefault(value: String?, fallback: T): T =
         runCatching { enumValueOf<T>(value.orEmpty()) }.getOrDefault(fallback)
+    private const val BACKUP_FORMAT = "tabdeck-backup"
 }

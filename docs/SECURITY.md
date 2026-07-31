@@ -2,127 +2,70 @@
 
 ## Protected data
 
-A tab inventory can reveal health, finances, identity, employment, politics, travel, relationships, and private communications. URLs, titles, notes, tags, source devices, source/native groups, launch decks, and saved views are sensitive local data.
+URLs, titles, notes, tags, source devices, source groups, launch decks, and saved views can reveal highly sensitive personal activity. TabDeck keeps this data inside the Android app sandbox unless the user explicitly exports or transfers it.
 
 ## Storage and telemetry
 
-- Room and DataStore remain inside the Android application sandbox.
-- Android cloud/device backup is disabled in the manifest.
-- No analytics, crash-reporting, advertising, account, or cloud-sync SDK is bundled.
-- No root, AccessibilityService scraping, VPN interception, notification scraping, or browser-profile database access.
-- Package visibility is narrowly declared with `<queries>`; `QUERY_ALL_PACKAGES` is not requested.
+- Room and DataStore remain sandboxed.
+- Android cloud/device backup is disabled.
+- No analytics, advertising, account, cloud-sync, or remote crash SDK is bundled.
+- No root, AccessibilityService scraping, VPN interception, notification scraping, hidden API, or browser-profile database access.
+- Package visibility is explicit; `QUERY_ALL_PACKAGES` is not requested.
 - Export is user-triggered through the Storage Access Framework.
-
-Official grounding:
-
-- Android sandbox/privacy: <https://developer.android.com/privacy>
-- Package visibility and least visibility: <https://developer.android.com/training/package-visibility/declaring>
-
-## Export boundary
-
-Full backup JSON and readable exports are plaintext. The backup excludes the live bridge token/session but still contains sensitive tab metadata.
-
-- Markdown and bookmarks HTML escape user-controlled text.
-- CSV quotes cells and prefixes text whose first non-space character is `=`, `+`, `-`, or `@` to reduce spreadsheet formula execution risk.
-- Readable exports exclude Trash.
-- Bookmarks export writes only validated HTTP(S) URLs.
-
-Users remain responsible for storage, synchronization, and sharing of exported files.
 
 ## Import boundary
 
-Every source is untrusted, including browser extensions and local companion tools.
+Every source is untrusted. Controls include HTTP(S)-only URLs, no URL credentials, strict authority/port validation, bounded fields and counts, strict UTF-8, timestamp coercion, source-identity coalescing, RE2/J rules, and typed backup classification.
+
+Malformed or unsupported backup-shaped input is rejected. It is never reinterpreted as a plain URL list.
+
+## Bridge threat model
+
+Threats include token disclosure, cross-site requests, non-local clients, request flooding, malformed HTTP/JSON, stale listeners, and accidental long-running service execution.
 
 Controls:
 
-- HTTP(S) URLs only;
-- no URL credentials;
-- strict authority and port validation;
-- control-character rejection;
-- IDN/default-port/query canonicalization;
-- bounded request/document/tab/title/group/note/tag/device/source-ID fields;
-- aggregate intent content cap of 16 MiB, 128 shared items, and 25,000 URLs;
-- valid UTF-8 prefix preservation at truncation boundaries;
-- timestamp and counter coercion;
-- source-identity coalescing;
-- strict backup format/version checks;
-- future-version and unrelated JSON rejection;
-- invalid rule/group isolation;
-- RE2/J rule engine.
-
-## Local bridge threat model
-
-Threats:
-
-- token guessing or disclosure;
-- cross-site browser requests;
-- public-network exposure;
-- request flooding/slow clients;
-- oversized or malformed HTTP/UTF-8/JSON;
-- stale listeners;
-- timing comparison leakage;
-- accidental long-running foreground service.
-
-Controls:
-
-- random 32-byte token rendered as 64 hex characters;
-- constant-time token comparison;
-- foreground notification and explicit stop;
-- 5–120-minute auto-expiry;
-- loopback-only default;
-- private/link-local IPv4/IPv6 allowlisting for LAN scope;
+- loopback-only listener and client policy;
+- explicit ADB forwarding for desktop use;
+- random 32-byte token and constant-time comparison;
+- token rotation/revocation by stopping the session and regenerating the token;
+- foreground notification, explicit stop, and 5–120-minute expiry;
 - strict extension/loopback Origin policy;
 - bounded request line, headers, body, sockets, and read time;
-- JSON content-type requirement;
-- per-client rate limiting and stale-client pruning;
-- request IDs and success/rejection counters;
-- token rotation;
-- no extension token persistence unless the user explicitly opts in;
-- connector health preflight sends no tab data;
-- `Service.onTimeout` stops the bridge on Android 15+.
+- content-type enforcement and strict UTF-8;
+- rate limiting and stale-client pruning;
+- no secret-bearing logs;
+- Android 15+ timeout handling.
 
-Android 15+ imposes a shared six-hour/24-hour background limit on `dataSync` foreground services. TabDeck's maximum user session is two hours and the timeout callback stops the service. Official reference: <https://developer.android.com/develop/background-work/services/fgs/timeout>
+Direct LAN mode is disabled. It may return only after authenticated TLS, explicit user opt-in, peer/address allowlisting, certificate lifecycle management, and immediate revocation are implemented.
 
-The LAN bridge uses cleartext HTTP for local browser-extension and ADB interoperability. The token provides authorization, not transport confidentiality. LAN scope should be used briefly on a trusted network.
+## Source identity
 
-## Android transfer boundary
+External tab IDs are session-scoped and may be reused. TabDeck stores an independent UUID and a one-way session-scoped opaque source ID. `firstSeenAt` is metadata only. Legacy unscoped IDs cannot authorize destructive missing-tab reconciliation.
 
-- Only validated HTTP(S) URLs are launched.
-- Destination package is explicit and narrowly declared.
-- Runs are capped, paced, confirmed, observable, and cancellable.
-- `ActivityNotFoundException` and other launch failures are counted.
-- Dispatch success does not prove destination rendering or grouping.
-- Partial outcomes are committed even after cancellation.
+## Community release security
 
-## Duplicate/destructive boundary
+The GitHub Release workflow uses a repository-published community signing key. No protected environment or GitHub Actions secret is required.
 
-- Import preserves duplicates for review.
-- Dedupe separates analysis from apply.
-- Metadata merge is deterministic.
-- App-side cleanup moves copies to Trash.
-- Permanent deletion requires explicit confirmation.
-- Firefox/Chromium connector cleanup is local to that browser, separate from capture, previewed, capped/chunked, and confirmed.
+The key is intentionally public. Its purpose is Android package-signature continuity so later community APKs can upgrade earlier ones. It does not provide exclusive publisher authentication, because anyone with the repository can use it.
+
+Users should verify:
+
+- the download comes from the official repository release page;
+- the release tag resolves to the manifest's source commit;
+- every asset matches the published SHA-256 file;
+- the APK certificate fingerprint is `8265D1219753753DC36635BAAEAB887FE63742C93CD686A498E5B66683A704A7`.
+
+The workflow verifies the committed key material, APK alignment, APK signature, certificate fingerprint, source/tag binding, archive integrity, and checksums before publication. No AAB or application-store release is produced.
 
 ## Desktop Link
 
-- Requires Windows, PowerShell 7.2+, `adb.exe`, user-enabled Developer options/USB debugging, and host authorization.
-- Uses only visible DevTools sockets and temporary dynamic forwards.
-- Caps live open/close operations at 250 and bridge pushes at 25,000.
-- Confirms transfer and close.
-- Closes a source only after destination target creation is confirmed.
-- Times out ADB calls and removes forwards on refresh/window close.
-- Never stores the bridge token.
-- Cannot bypass a browser that exposes no DevTools socket.
-
-Official Chrome reference: <https://developer.chrome.com/devtools/docs/remote-debugging>
-
-## Distribution checklist
-
-1. Publish an accurate privacy policy for local tab metadata.
-2. Keep AccessibilityService collection excluded unless the product becomes a genuine accessibility tool.
-3. Review foreground-service declarations and user-visible purpose against current Play policy.
-4. Test Android 13+ notification permission and Android 15+ service timeout behavior.
-5. Sign extensions through official channels.
-6. Produce SBOM/dependency/static-security scans for the release commit.
-7. Run backup/export fixtures through external parsers and browsers.
-8. Perform device-level accessibility and performance testing in release mode.
+- user-authorized ADB only;
+- recognized Chromium-family DevTools sockets only;
+- unsupported sockets reported and skipped;
+- temporary forwards removed on refresh and normal exit;
+- destination target verified before source closure;
+- source remains open when destination verification fails;
+- token never stored;
+- no browser database access;
+- portable PowerShell fallback does not require a separately installed .NET application runtime.

@@ -21,14 +21,17 @@ class ProductVersion:
 
     @property
     def tag(self) -> str:
+        """Return the semantic release tag for this version."""
         return f"v{self.name}"
 
     @property
     def artifact_prefix(self) -> str:
+        """Return the deterministic artifact-name prefix for this version."""
         return f"TabDeck-v{self.name}"
 
 
 def load_version(path: Path = VERSION_FILE) -> ProductVersion:
+    """Load and validate the authoritative version properties."""
     values: dict[str, str] = {}
     for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()

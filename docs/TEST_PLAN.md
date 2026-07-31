@@ -74,7 +74,8 @@ For every declared package, installed/uninstalled/disabled:
 
 ## G. Bridge
 
-- loopback and LAN scope; IPv4, IPv6 loopback, ULA, link-local, public address rejection.
+- IPv4/IPv6 loopback acceptance and rejection of private-LAN, link-local, ULA, and public clients;
+- ADB-forwarded desktop access resolves to the loopback listener.
 - valid/invalid/empty/rotated token and timing-independent compare behavior.
 - accepted extension origins, arbitrary origin rejection, no-Origin companion request.
 - `OPTIONS`, `/health`, v1/v2/v3 import, wrong method/path/content type.

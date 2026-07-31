@@ -13,6 +13,7 @@ TabDeck v1.0.0 is the first public release of the Android-first browser-tab cont
 - Explicit Android-browser transfer with destination confirmation, pacing, cancellation, and partial-result history.
 - Portable backup format v3 plus Markdown, CSV, and bookmarks HTML exports.
 - Two Android home-screen widgets and adaptive phone/tablet navigation.
+- New stacked-tab TabDeck identity across the Android launcher, themed icons, browser connectors, Desktop Link archive, and release branding package.
 
 ## Compatibility identifiers
 
@@ -27,6 +28,8 @@ These identifiers are implementation formats and are intentionally not reset wit
 
 Android does not provide a general API that lets one ordinary application read or close every tab in unrelated browser applications. TabDeck uses only explicit user-authorized connectors and transfer routes. Browser-native group creation and universal source-tab closure are therefore not promised.
 
-## Installation
+## Distribution
 
-Install the signed `TabDeck-v1.0.0.apk` from the GitHub Release, or build from source. The AAB is intended for store/distribution workflows and is not directly installed by users. Connector installation is optional and documented in `docs/INSTALLATION.md`.
+TabDeck is released directly through GitHub as a community-signed APK. No application store, protected GitHub environment, or repository secret is required. The public community key keeps package signatures stable for upgrades; authenticity is established through the official repository, release tag, source commit, manifest, and SHA-256 checksums.
+
+Install `TabDeck-v1.0.0.apk` from the matching GitHub Release. Connector archives, Desktop Link, branding assets, source, validation report, manifest, and checksums are published beside it.

@@ -15,3 +15,7 @@ dist/
 *.pfx
 *.pem
 *.key
+
+# Python-generated artifacts
+__pycache__/
+*.py[cod]
