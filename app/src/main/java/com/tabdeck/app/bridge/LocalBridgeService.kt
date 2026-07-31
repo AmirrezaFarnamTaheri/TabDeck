@@ -115,7 +115,7 @@ class LocalBridgeService : Service() {
                 val state = runBlocking { repository.currentState() }
                 sessionScope = BridgeScope.THIS_DEVICE
                 val now = System.currentTimeMillis()
-                sessionExpiry = now + state.settings.bridgeSessionMinutes.coerceIn(5, 120) * 60_000L
+                sessionExpiry = now + state.settings.bridgeSessionMinutes.coerceAtLeast(1) * 60_000L
                 runBlocking {
                     repository.setBridgeSession(
                         BridgeSession(

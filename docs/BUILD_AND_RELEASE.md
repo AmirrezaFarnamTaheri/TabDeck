@@ -48,12 +48,12 @@ Manual dispatch remains available for recovery or a deliberate rerun. Supply the
 
 ## Published assets
 
-- `TabDeck-v1.0.0.apk`
-- `TabDeck-v1.0.0-Firefox-Bridge-unsigned.xpi`
-- `TabDeck-v1.0.0-Chromium-Bridge.zip`
-- `TabDeck-v1.0.0-Desktop-Link.zip`
-- `TabDeck-v1.0.0-Branding.zip`
-- `TabDeck-v1.0.0-source.zip`
+- `TabDeck-v1.1.0.apk`
+- `TabDeck-v1.1.0-Firefox-Bridge-unsigned.xpi`
+- `TabDeck-v1.1.0-Chromium-Bridge.zip`
+- `TabDeck-v1.1.0-Desktop-Link.zip`
+- `TabDeck-v1.1.0-Branding.zip`
+- `TabDeck-v1.1.0-source.zip`
 - validation report
 - release manifest
 - SHA-256 checksums

@@ -7,7 +7,7 @@ import com.tabdeck.app.model.TabItem
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Strict, bounded decoder for extension and Desktop Link snapshots. */
+/** Strict decoder for extension and Desktop Link snapshots. */
 object BridgePayloadParser {
     data class ParsedImport(
         val tabs: List<TabItem>,
@@ -22,35 +22,35 @@ object BridgePayloadParser {
         val root = JSONObject(raw)
         val now = System.currentTimeMillis()
         val sourceBrowser = BrowserId.fromWireName(root.optString("browser"))
-        val sourceLabel = cleanText(root.optString("sourceLabel", sourceBrowser.displayName), 120)
+        val sourceLabel = cleanText(root.optString("sourceLabel", sourceBrowser.displayName))
             .ifBlank { sourceBrowser.displayName }
-        val deviceName = cleanText(root.optString("deviceName", root.optString("deviceId")), 120)
-        val sourceSessionId = cleanText(
+        val deviceName = cleanText(root.optString("deviceName", root.optString("deviceId")))
+        val sourceSessionId = cleanIdentifier(
             root.optString("sourceSessionId", root.optString("sessionId")),
             MAX_SOURCE_SESSION_ID_LENGTH,
         )
         val identityVersion = root.optInt("identityVersion", 0)
-        val sessionGroup = cleanText(root.optString("group"), 120)
+        val sessionGroup = cleanText(root.optString("group"))
         val capturedAt = safeTimestamp(root.optLong("capturedAt", now), now)
         val tabArray = root.optJSONArray("tabs") ?: JSONArray()
 
         val parsed = buildList {
-            for (index in 0 until minOf(tabArray.length(), MAX_TABS_PER_IMPORT)) {
+            for (index in 0 until tabArray.length()) {
                 val item = tabArray.optJSONObject(index) ?: continue
                 val url = UrlNormalizer.sanitizeWebUrl(item.optString("url")) ?: continue
                 val itemBrowserWire = item.optString("browser")
                 val itemBrowser = if (itemBrowserWire.isBlank()) sourceBrowser else BrowserId.fromWireName(itemBrowserWire)
-                val itemDevice = cleanText(item.optString("deviceId", deviceName), 120)
-                val rawSourceTabId = cleanText(item.optString("id", item.optString("tabId")), 160)
+                val itemDevice = cleanText(item.optString("deviceId", deviceName))
+                val rawSourceTabId = cleanIdentifier(item.optString("id", item.optString("tabId")), 160)
                 val sourceTabId = SourceIdentity.encodeTabId(sourceSessionId, rawSourceTabId)
-                val group = cleanText(item.optString("group", sessionGroup), 120)
+                val group = cleanText(item.optString("group", sessionGroup))
                 val createdAt = safeTimestamp(item.optLong("createdAt", capturedAt), now)
                 val lastSeenAt = safeTimestamp(item.optLong("lastSeenAt", capturedAt), now)
 
                 add(
                     TabItem(
                         url = url,
-                        title = cleanText(item.optString("title"), 500),
+                        title = cleanText(item.optString("title")),
                         browser = itemBrowser,
                         sourceGroup = group,
                         assignedGroup = group.ifBlank { "Inbox" },
@@ -92,7 +92,6 @@ object BridgePayloadParser {
     private fun safeTimestamp(value: Long, now: Long): Long = value.coerceIn(MIN_REASONABLE_EPOCH_MS, now + MAX_FUTURE_SKEW_MS)
 
     private const val CURRENT_IDENTITY_VERSION = 1
-    private const val MAX_TABS_PER_IMPORT = 25_000
     private const val MAX_SOURCE_SESSION_ID_LENGTH = 256
     private const val MIN_REASONABLE_EPOCH_MS = 946_684_800_000L // 2000-01-01
     private const val MAX_FUTURE_SKEW_MS = 86_400_000L

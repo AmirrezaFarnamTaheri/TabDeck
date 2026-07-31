@@ -1,17 +1,17 @@
 TabDeck static validation
 =========================
-PASS: Parsed 13 XML files
+PASS: Parsed 16 XML files
 PASS: Parsed 4 JSON files
 PASS: Parsed 2 HTML files
 PASS: Checked 5 JavaScript files with node --check
 PASS: Checked 2 shell scripts with sh -n
 PASS: Parsed 1 embedded XAML document(s)
-PASS: Validated UTF-8 and control-byte integrity for 101 text files
+PASS: Validated UTF-8 and control-byte integrity for 107 text files
 PASS: Checked delimiter integrity for 42 Kotlin/Gradle files
 PASS: Validated Compose icon imports in 4 Kotlin files
 PASS: Parsed 3 PowerShell files
 PASS: Validated Android manifest privacy and browser-discovery contracts
-PASS: Validated public product version v1.0.0 / Android versionCode 1
+PASS: Validated public product version v1.1.0 / Android versionCode 2
 PASS: Validated extension manifests and synchronized bridge runtime
 PASS: Validated committed Gradle wrapper JAR (48462 bytes)
 PASS: Validated pinned build coordinates

@@ -6,12 +6,12 @@ The Android application is the product. Browser extensions and Desktop Link are 
 
 The architecture separates six operations:
 
-1. **Acquire** a browser-provided or user-shared snapshot.
+1. **Capture** a browser-provided or user-shared snapshot.
 2. **Validate** untrusted URLs and metadata at a single persistence boundary.
 3. **Store** an independent local inventory.
 4. **Understand** the inventory through aggregates, facets, saved views, and duplicate analysis.
 5. **Organize** through groups, tags, rules, status lanes, and reusable decks.
-6. **Transfer** selected URLs to an explicit Android browser with bounded, observable progress.
+6. **Open** selected URLs in an explicit Android browser with observable progress.
 
 ## 2. Capability boundary
 
@@ -34,7 +34,7 @@ Official references:
 - Chromium desktop extension snapshots with native desktop group metadata
 - Windows Desktop Link snapshots from user-authorized ADB/DevTools targets
 
-The intent adapter handles text, ClipData, deep-link fields, one/many streams, URI de-duplication, MIME checks, a 128-item ceiling, a 16 MiB aggregate text ceiling, and a 25,000-URL ceiling. UTF-8 truncation never splits a surrogate pair or emits malformed text.
+The intent adapter handles text, ClipData, deep-link fields, one/many streams, URI de-duplication, and MIME checks without count-based truncation. A 16 MiB aggregate document boundary protects the app from hostile or accidental memory exhaustion; users can split larger files without losing later items inside any accepted document.
 
 All adapters produce untrusted candidates. Only the repository writes persistent state.
 
@@ -55,7 +55,7 @@ Preferences DataStore owns small settings and bridge secrets/counters.
 
 ### Library path
 
-The main library is a Room-backed `Pager`/`PagingSource`, not an in-memory projection of the full database. Search, filters, sort direction, and sort mode are compiled into bounded SQL. Compose consumes `LazyPagingItems` using stable item IDs and reusable content types; placeholders are disabled.
+The main library is a Room-backed `Pager`/`PagingSource`, not an in-memory projection of the full database. Search, filters, sort direction, and sort mode are compiled into parameterized SQL. Compose consumes `LazyPagingItems` using stable item IDs and reusable content types; placeholders are disabled.
 
 Dashboard totals, group/browser/source facets, recent history, smart-view summaries, and deck summaries are separate small flows. This avoids invalidating or copying the complete inventory whenever a counter changes.
 
@@ -75,7 +75,7 @@ Official references:
 - Group rename/delete updates dependent tab assignments and rule destinations transactionally.
 - Case-insensitive group uniqueness is enforced.
 - Large ID operations are chunked below SQLite parameter ceilings.
-- Externally supplied and interactively edited metadata is bounded and sanitized again at the repository boundary.
+- Externally supplied and interactively edited metadata is normalized and sanitized again at the repository boundary; security-sensitive protocol identifiers retain explicit storage bounds.
 
 ## 5. Processing engines
 
@@ -100,7 +100,7 @@ Official references:
 
 ## 6. Control model
 
-Transient selection is separate from Room. The user can select loaded items or resolve every matching query up to the 25,000-record control ceiling. Query-wide operations include pin/unpin, tag add/remove/replace/clear, group assignment, archive, snooze, Trash, deck creation, copy/share, and transfer.
+Transient selection is separate from Room. The user can select loaded items or resolve every matching record in the current query. Query-wide operations include pin/unpin, tag add/remove/replace/clear, group assignment, archive, snooze, Trash, deck creation, copy/share, and transfer.
 
 Smart views serialize the full library query. Decks preserve explicit ordered membership and survive filter changes. Backup v3 preserves both.
 
@@ -111,9 +111,10 @@ Smart views serialize the full library query. Decks preserve explicit ordered me
 - validates a declared explicit destination package;
 - checks installation readiness;
 - accepts only HTTP/HTTPS destinations;
-- bounds the queue;
+- processes the complete requested queue;
 - launches at gentle/balanced/fast pacing;
-- reports current/opened/failed totals;
+- requests a distinct destination tab with `Browser.EXTRA_CREATE_NEW_TAB`;
+- reports current/dispatched/failed totals without claiming rendering confirmation;
 - supports cancellation;
 - writes partial outcomes in `NonCancellable` cleanup.
 
@@ -124,10 +125,10 @@ A transfer is a copy/open request. TabDeck does not claim universal source-tab c
 The local bridge is a user-started foreground service. It:
 
 - binds only to loopback; desktop clients use an explicit ADB port forward;
-- expires after 5–120 minutes;
+- expires after the positive duration selected by the user;
 - exposes `/health` and `/api/v1|v2|v3/import`;
 - uses a rotating 64-hex token and constant-time comparison;
-- validates origin, method, path, content type, headers, request ID, body, UTF-8, source address, rate, and tab count;
+- validates origin, method, path, content type, headers, request ID, body, UTF-8, source address, and rate;
 - rejects every non-loopback client; direct LAN exposure requires a future authenticated TLS design;
 - stops on expiry, explicit stop, Android service timeout, or process teardown.
 

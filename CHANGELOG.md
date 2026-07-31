@@ -2,6 +2,22 @@
 
 All notable public changes are recorded here. This repository intentionally begins its public history at v1.0.0.
 
+## [1.1.0] - 2026-07-31
+
+### Fixed
+
+- Requested a new destination tab for every Android browser restore intent.
+- Replaced misleading load-success language with honest request-dispatch reporting.
+- Clarified that installed browser discovery identifies an open target, not a live-tab source.
+
+### Changed
+
+- Reorganized Android navigation into Home, Tabs, Open, Capture, and Settings.
+- Replaced decorative gradient/elevated-card styling with a restrained TabDeck utility system.
+- Rebuilt Windows Desktop Link as a guided device-to-session-to-selection-to-capture workspace.
+- Removed arbitrary collection-count and user-configuration ceilings while retaining protocol security boundaries.
+- Added a guided-utility regression validator to CI and release validation.
+
 ## [1.0.0] - 2026-07-30
 
 ### Added

@@ -46,10 +46,10 @@ object SnapshotJsonCodec {
         put("tabs", JSONArray().apply { snapshot.tabs.forEach { put(tabToJson(it)) } })
         put("rules", JSONArray().apply { snapshot.rules.forEach { put(ruleToJson(it)) } })
         put("groups", JSONArray().apply { snapshot.groups.forEach { put(groupToJson(it)) } })
-        put("smartViews", JSONArray().apply { snapshot.smartViews.take(MAX_BACKUP_VIEWS).forEach { put(smartViewToJson(it)) } })
-        put("decks", JSONArray().apply { snapshot.deckBackups.take(MAX_BACKUP_DECKS).forEach { put(deckBackupToJson(it)) } })
-        put("transferHistory", JSONArray().apply { snapshot.transferHistory.take(100).forEach { put(transferToJson(it)) } })
-        put("importHistory", JSONArray().apply { snapshot.importHistory.take(100).forEach { put(importToJson(it)) } })
+        put("smartViews", JSONArray().apply { snapshot.smartViews.forEach { put(smartViewToJson(it)) } })
+        put("decks", JSONArray().apply { snapshot.deckBackups.forEach { put(deckBackupToJson(it)) } })
+        put("transferHistory", JSONArray().apply { snapshot.transferHistory.forEach { put(transferToJson(it)) } })
+        put("importHistory", JSONArray().apply { snapshot.importHistory.forEach { put(importToJson(it)) } })
     }.toString(2)
 
     fun decode(raw: String?): AppSnapshot = (decodeClassified(raw) as? DecodeResult.Success)?.snapshot ?: AppSnapshot()
@@ -123,7 +123,6 @@ object SnapshotJsonCodec {
         put("defaultDedupeMode", value.defaultDedupeMode.name)
         put("defaultKeepPolicy", value.defaultKeepPolicy.name)
         put("transferPacing", value.transferPacing.name)
-        put("transferBatchLimit", value.transferBatchLimit)
         put("viewDensity", value.viewDensity.name)
         put("libraryLayout", value.libraryLayout.name)
         put("themeMode", value.themeMode.name)
@@ -139,23 +138,22 @@ object SnapshotJsonCodec {
     private fun settingsFromJson(value: JSONObject): AppSettings = AppSettings(
         bridgeToken = value.optString("bridgeToken").ifBlank { newBridgeToken() },
         bridgeScope = BridgeScope.THIS_DEVICE,
-        bridgeSessionMinutes = value.optInt("bridgeSessionMinutes", 20).coerceIn(5, 120),
+        bridgeSessionMinutes = value.optInt("bridgeSessionMinutes", 20).coerceAtLeast(1),
         onboardingComplete = value.optBoolean("onboardingComplete", false),
         autoCategorizeImports = value.optBoolean("autoCategorizeImports", true),
         stripTrackingParameters = value.optBoolean("stripTrackingParameters", true),
         defaultDedupeMode = enumOrDefault(value.optString("defaultDedupeMode"), DedupeMode.NORMALIZED_URL),
         defaultKeepPolicy = enumOrDefault(value.optString("defaultKeepPolicy"), KeepPolicy.RICHEST),
         transferPacing = enumOrDefault(value.optString("transferPacing"), TransferPacing.BALANCED),
-        transferBatchLimit = value.optInt("transferBatchLimit", 80).coerceIn(1, 250),
         viewDensity = enumOrDefault(value.optString("viewDensity"), ViewDensity.COMFORTABLE),
         libraryLayout = enumOrDefault(value.optString("libraryLayout"), LibraryLayout.LIST),
         themeMode = enumOrDefault(value.optString("themeMode"), ThemeMode.SYSTEM),
-        dynamicColor = value.optBoolean("dynamicColor", true),
-        accentStyle = enumOrDefault(value.optString("accentStyle"), AccentStyle.VIOLET),
+        dynamicColor = value.optBoolean("dynamicColor", false),
+        accentStyle = enumOrDefault(value.optString("accentStyle"), AccentStyle.OCEAN),
         reduceMotion = value.optBoolean("reduceMotion", false),
         hapticFeedback = value.optBoolean("hapticFeedback", true),
         syncMissingPolicy = enumOrDefault(value.optString("syncMissingPolicy"), SyncMissingPolicy.KEEP),
-        staleAfterDays = value.optInt("staleAfterDays", 30).coerceIn(1, 3650),
+        staleAfterDays = value.optInt("staleAfterDays", 30).coerceAtLeast(1),
         showAdvancedControls = value.optBoolean("showAdvancedControls", false),
     )
 
@@ -221,7 +219,7 @@ object SnapshotJsonCodec {
         put("colorKey", deck.colorKey)
         put("createdAtEpochMs", deck.createdAtEpochMs)
         put("updatedAtEpochMs", deck.updatedAtEpochMs)
-        put("tabIds", JSONArray(value.tabIds.distinct().take(MAX_BACKUP_DECK_TABS)))
+        put("tabIds", JSONArray(value.tabIds.distinct()))
     }
 
     private fun transferToJson(event: TransferEvent): JSONObject = JSONObject().apply {
@@ -248,7 +246,7 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toTabList(): List<TabItem> = buildList {
         val array = this@toTabList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_BACKUP_TABS)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val url = item.optString("url")
             if (url.isBlank()) continue
@@ -279,7 +277,7 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toRuleList(): List<RegexRule> = buildList {
         val array = this@toRuleList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_BACKUP_RULES)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val pattern = item.optString("pattern")
             if (pattern.isBlank()) continue
@@ -302,7 +300,7 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toGroupList(): List<GroupDefinition> = buildList {
         val array = this@toGroupList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_BACKUP_GROUPS)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val name = item.optString("name")
             if (name.isBlank()) continue
@@ -321,7 +319,7 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toSmartViewList(): List<SmartView> = buildList {
         val array = this@toSmartViewList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_BACKUP_VIEWS)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val name = item.optString("name").trim()
             if (name.isBlank()) continue
@@ -342,14 +340,14 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toDeckBackupList(): List<DeckBackup> = buildList {
         val array = this@toDeckBackupList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_BACKUP_DECKS)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val name = item.optString("name").trim()
             if (name.isBlank()) continue
             val now = System.currentTimeMillis()
             val ids = buildList {
                 val values = item.optJSONArray("tabIds") ?: JSONArray()
-                for (position in 0 until minOf(values.length(), MAX_BACKUP_DECK_TABS)) {
+                for (position in 0 until values.length()) {
                     values.optString(position).trim().takeIf(String::isNotBlank)?.let(::add)
                 }
             }.distinct()
@@ -373,7 +371,7 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toTransferList(): List<TransferEvent> = buildList {
         val array = this@toTransferList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_HISTORY_ITEMS)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             add(
                 TransferEvent(
@@ -392,7 +390,7 @@ object SnapshotJsonCodec {
 
     private fun JSONArray?.toImportList(): List<ImportSession> = buildList {
         val array = this@toImportList ?: return@buildList
-        for (index in 0 until minOf(array.length(), MAX_HISTORY_ITEMS)) {
+        for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             add(
                 ImportSession(
@@ -414,13 +412,6 @@ object SnapshotJsonCodec {
         for (index in 0 until array.length()) array.optString(index).trim().takeIf(String::isNotBlank)?.let(::add)
     }
 
-    private const val MAX_BACKUP_TABS = 25_000
-    private const val MAX_BACKUP_RULES = 250
-    private const val MAX_BACKUP_GROUPS = 500
-    private const val MAX_BACKUP_VIEWS = 250
-    private const val MAX_BACKUP_DECKS = 250
-    private const val MAX_BACKUP_DECK_TABS = 5_000
-    private const val MAX_HISTORY_ITEMS = 100
 
     private fun JSONObject.optLongOrNull(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null
     private inline fun <reified T : Enum<T>> enumOrDefault(value: String?, fallback: T): T =

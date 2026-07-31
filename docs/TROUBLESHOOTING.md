@@ -7,24 +7,22 @@ This is an Android platform boundary, not a missing permission. Use browser shar
 ## A destination browser is not listed
 
 - Confirm the exact browser variant is installed and enabled.
-- Refresh browser readiness in Control room.
+- Open **Capture** and refresh available open targets.
 - Some browsers can still receive a standard Android URL intent even if they are not among TabDeck's declared optimized targets.
 - Work-profile or secondary-user installations may not be visible to the current profile.
 
 ## Transfer opens only some tabs
 
-Transfers are bounded and paced. Check transfer history for opened/failed counts. The browser may be disabled, removed, background-restricted, overloaded, or may reject a URL. Retry only failed items in a smaller batch and use gentler pacing.
+Check Open history for dispatched and failed request counts. TabDeck requests a new tab for every valid URL, but the browser owns final rendering and may be disabled, removed, background-restricted, overloaded, or reject a URL. Use gentler pacing or retry failed items.
 
 ## Bridge test fails
 
 - Confirm the bridge is visibly running and has not expired.
 - Confirm endpoint, port, and 64-hex token.
 - For same-device/ADB forwarding, use loopback.
-- For LAN mode, use a private address reachable from the connector device.
-- Check firewall, Wi-Fi client isolation, VPN routing, and whether the phone changed networks.
 - Rotate the token after accidental disclosure.
 
-Public internet addresses are rejected by design.
+All non-loopback addresses are rejected by design. Desktop Link reaches loopback through an explicit ADB forward.
 
 ## Firefox connector cannot enumerate tabs
 
@@ -40,7 +38,7 @@ Firefox Android extension APIs and installation paths vary by channel. Confirm t
 
 ## Import detects fewer links than expected
 
-TabDeck accepts only HTTP/HTTPS URLs and rejects credentials, malformed authorities, invalid ports, control characters, unsupported schemes, oversized payloads, and candidates beyond safety ceilings. Review the import preview and source format.
+TabDeck accepts only HTTP/HTTPS URLs and rejects credentials, malformed authorities, invalid ports, control characters, unsupported schemes, and documents beyond the explicit byte-safety boundary. It does not discard later valid links because an item-count ceiling was reached. Review the import preview and source format.
 
 ## A full backup will not restore
 
@@ -55,7 +53,7 @@ Verify DNS, proxy, certificate interception, and access to Gradle, Google Maven,
 Run:
 
 ```bash
-python3 tools/check_version.py --tag v1.0.0
+python3 tools/check_version.py --tag v1.1.0
 ```
 
 Then synchronize `version.properties`, extension manifests, changelog, release notes, and the Git tag. Do not reset Room/backup/bridge/query compatibility versions.

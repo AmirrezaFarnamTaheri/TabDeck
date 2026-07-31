@@ -377,7 +377,7 @@ def validate_release_contracts() -> None:
         "backup v3": "const val VERSION = 3" in backup,
         "Room schema v3": "version = 3" in database and "MIGRATION_2_3" in database,
         "smart-view query v2": '.put("version", 2)' in query_codec,
-        "source-aware filters": "sourceDevices" in query_codec and "sourceGroups" in query_codec and "Source topology" in screens,
+        "source-aware filters": "sourceDevices" in query_codec and "sourceGroups" in query_codec and "Captured sources" in screens,
         "query-wide bulk controls": "selectAllMatching" in screens and "editTagsOnSelected" in screens,
         "chunked tag editing": "suspend fun editTags" in repository and "chunked(SQLITE_IN_CHUNK)" in repository,
         "quick control widget": "QuickCaptureWidgetReceiver" in manifest and "quick_capture_widget_info" in manifest,

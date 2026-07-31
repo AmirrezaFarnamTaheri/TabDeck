@@ -5,15 +5,15 @@
 - Empty, whitespace-only, malformed, future-version, and unrelated JSON files.
 - 16 MiB exact boundary and one-byte-over boundary.
 - UTF-8 truncation around ASCII, 2-byte, 3-byte, emoji/surrogate pairs, and malformed surrogate input.
-- 128 shared-item boundary and duplicate ClipData/stream URIs.
-- 25,000 URL boundary and 25,001+ truncation accounting.
+- large shared-item collections and duplicate ClipData/stream URIs without count truncation.
+- 25,001+ URL imports preserve every valid candidate; request-byte overflow is rejected explicitly rather than partially accepted.
 - Markdown, nested/balanced parentheses, punctuation, HTML entities, and `www.` URLs.
 - `javascript:`, `data:`, `file:`, `content:`, `intent:` and opaque deep links.
 - credential URLs, malformed/out-of-range ports, IPv4/IPv6/IDN/localhost.
 - duplicate source IDs in one payload and repeated snapshots.
 - same source tab ID from different browsers/devices.
 - complete, partial, current-window, protected-pinned, and complete-zero snapshots.
-- oversized titles/notes/tags/groups/device IDs/counters/timestamps.
+- long titles/notes/tags/groups/device labels, bounded source identifiers, counters, and timestamps.
 
 ## B. Database, Paging, and migrations
 
@@ -21,12 +21,12 @@
 - migrations 1→2, 2→3, and 1→3 with data fixtures.
 - stable Inbox/default IDs and system-group protection.
 - group create/rename/delete, case-insensitive duplicates, dependent tabs/rules.
-- 800/801/5,000/25,000-ID operations and transaction interruption.
+- 800/801/5,000/25,001-ID operations, SQLite chunking, and transaction interruption.
 - Paging refresh/append/retry, empty result, query changes during load, stable scroll key after edits.
 - every status/browser/group/device/source-group/tag/pin/notes/stale filter combination.
 - all nine sorts and both directions.
 - source facet/count consistency against direct SQL.
-- query-wide selection cap and selection cleanup after mutations.
+- complete query-wide selection and selection cleanup after mutations.
 
 ## C. Smart views and decks
 
@@ -46,9 +46,9 @@
 - preview equals applied plan.
 - duplicates remain visible until explicit action.
 - RE2 unsupported lookaround/backreference feedback.
-- rule priority, ignore-case, continue/stop, disabled rules, 250-rule ceiling.
+- rule priority, ignore-case, continue/stop, disabled rules, and more than 250 ordered rules.
 - rule test count versus applied count.
-- bulk tags add/remove/replace/clear with empty input and tag limits.
+- bulk tags add/remove/replace/clear with empty input and large tag sets.
 
 ## E. Lifecycle and maintenance
 
@@ -63,14 +63,14 @@
 
 For every declared package, installed/uninstalled/disabled:
 
-- one tab, zero tabs, queue cap, invalid URL, package removed between detection and launch.
+- one tab, zero tabs, 25,001+ tabs, invalid URL, and package removed between detection and launch.
 - selected/query/group/deck scopes.
-- destination confirmation count and browser identity.
+- destination confirmation count, browser identity, and create-new-tab intent extra.
 - gentle/balanced/fast pacing.
 - cancellation before first/middle/final item.
 - rotation/background/foreground/process interruption.
 - partial history and per-tab transfer counters.
-- clipboard/share Binder-size protection.
+- clipboard/share behavior for large selections and platform-level failure reporting.
 
 ## G. Bridge
 
@@ -90,7 +90,7 @@ For every declared package, installed/uninstalled/disabled:
 - Firefox stable/Beta/Nightly Android API availability.
 - normal/private windows according to permission behavior.
 - pinned, active, discarded, inaccessible special URLs.
-- 0/1/large sessions, 25,000 cap, tab API errors.
+- 0/1/25,001+ sessions without truncation and tab API errors.
 - duplicate preview and survivor choice.
 - cleanup chunking and confirmation.
 - bridge preflight permission denied/timeout/expired/public endpoint/API response.
@@ -100,11 +100,11 @@ For every declared package, installed/uninstalled/disabled:
 ## I. Desktop Link
 
 - no adb, unauthorized/offline/multiple devices.
-- no DevTools socket and >32 sockets.
+- no DevTools socket and more than 32 visible sockets.
 - port collision and forward cleanup.
 - malformed/timeout `/json` targets.
 - search, select visible, duplicate selection.
-- 250 live-action and 25,000 bridge caps.
+- more than 250 live actions and 25,001+ bridge tabs without count truncation.
 - destination same/different source.
 - failed destination open must not close source.
 - manual close confirmation.
@@ -119,7 +119,7 @@ For every declared package, installed/uninstalled/disabled:
 - Markdown escaping and grouping.
 - CSV quotes, CR/LF normalization, Unicode, formula prefixes, external spreadsheet import.
 - bookmarks HTML escaping, folder grouping, browser import in representative browsers.
-- readable export excludes Trash; full backup retains bounded Trash.
+- readable export excludes Trash; full backup retains the complete supported Trash collection.
 
 ## K. UI, accessibility, and performance
 

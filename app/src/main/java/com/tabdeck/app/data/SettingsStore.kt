@@ -39,7 +39,6 @@ class SettingsStore(private val context: Context) {
         val dedupeMode = stringPreferencesKey("default_dedupe_mode")
         val keepPolicy = stringPreferencesKey("default_keep_policy")
         val transferPacing = stringPreferencesKey("transfer_pacing")
-        val transferBatchLimit = intPreferencesKey("transfer_batch_limit")
         val viewDensity = stringPreferencesKey("view_density")
         val libraryLayout = stringPreferencesKey("library_layout")
         val themeMode = stringPreferencesKey("theme_mode")
@@ -119,23 +118,22 @@ class SettingsStore(private val context: Context) {
     private fun toSettings(prefs: Preferences): AppSettings = AppSettings(
         bridgeToken = prefs[Keys.bridgeToken].orEmpty().ifBlank { defaults.bridgeToken },
         bridgeScope = BridgeScope.THIS_DEVICE,
-        bridgeSessionMinutes = (prefs[Keys.bridgeSessionMinutes] ?: 20).coerceIn(5, 120),
+        bridgeSessionMinutes = (prefs[Keys.bridgeSessionMinutes] ?: 20).coerceAtLeast(1),
         onboardingComplete = prefs[Keys.onboardingComplete] ?: false,
         autoCategorizeImports = prefs[Keys.autoCategorize] ?: true,
         stripTrackingParameters = prefs[Keys.stripTracking] ?: true,
         defaultDedupeMode = enumOrDefault(prefs[Keys.dedupeMode], DedupeMode.NORMALIZED_URL),
         defaultKeepPolicy = enumOrDefault(prefs[Keys.keepPolicy], KeepPolicy.RICHEST),
         transferPacing = enumOrDefault(prefs[Keys.transferPacing], TransferPacing.BALANCED),
-        transferBatchLimit = (prefs[Keys.transferBatchLimit] ?: 80).coerceIn(1, 250),
         viewDensity = enumOrDefault(prefs[Keys.viewDensity], ViewDensity.COMFORTABLE),
         libraryLayout = enumOrDefault(prefs[Keys.libraryLayout], LibraryLayout.LIST),
         themeMode = enumOrDefault(prefs[Keys.themeMode], ThemeMode.SYSTEM),
-        dynamicColor = prefs[Keys.dynamicColor] ?: true,
-        accentStyle = enumOrDefault(prefs[Keys.accentStyle], AccentStyle.VIOLET),
+        dynamicColor = prefs[Keys.dynamicColor] ?: false,
+        accentStyle = enumOrDefault(prefs[Keys.accentStyle], AccentStyle.OCEAN),
         reduceMotion = prefs[Keys.reduceMotion] ?: false,
         hapticFeedback = prefs[Keys.hapticFeedback] ?: true,
         syncMissingPolicy = enumOrDefault(prefs[Keys.syncMissingPolicy], SyncMissingPolicy.KEEP),
-        staleAfterDays = (prefs[Keys.staleAfterDays] ?: 30).coerceIn(1, 3650),
+        staleAfterDays = (prefs[Keys.staleAfterDays] ?: 30).coerceAtLeast(1),
         showAdvancedControls = prefs[Keys.showAdvancedControls] ?: false,
     )
 
@@ -153,14 +151,13 @@ class SettingsStore(private val context: Context) {
 
     private fun writeSettings(prefs: androidx.datastore.preferences.core.MutablePreferences, value: AppSettings) {
         prefs[Keys.bridgeToken] = value.bridgeToken
-        prefs[Keys.bridgeSessionMinutes] = value.bridgeSessionMinutes.coerceIn(5, 120)
+        prefs[Keys.bridgeSessionMinutes] = value.bridgeSessionMinutes.coerceAtLeast(1)
         prefs[Keys.onboardingComplete] = value.onboardingComplete
         prefs[Keys.autoCategorize] = value.autoCategorizeImports
         prefs[Keys.stripTracking] = value.stripTrackingParameters
         prefs[Keys.dedupeMode] = value.defaultDedupeMode.name
         prefs[Keys.keepPolicy] = value.defaultKeepPolicy.name
         prefs[Keys.transferPacing] = value.transferPacing.name
-        prefs[Keys.transferBatchLimit] = value.transferBatchLimit.coerceIn(1, 250)
         prefs[Keys.viewDensity] = value.viewDensity.name
         prefs[Keys.libraryLayout] = value.libraryLayout.name
         prefs[Keys.themeMode] = value.themeMode.name
@@ -169,7 +166,7 @@ class SettingsStore(private val context: Context) {
         prefs[Keys.reduceMotion] = value.reduceMotion
         prefs[Keys.hapticFeedback] = value.hapticFeedback
         prefs[Keys.syncMissingPolicy] = value.syncMissingPolicy.name
-        prefs[Keys.staleAfterDays] = value.staleAfterDays.coerceIn(1, 3650)
+        prefs[Keys.staleAfterDays] = value.staleAfterDays.coerceAtLeast(1)
         prefs[Keys.showAdvancedControls] = value.showAdvancedControls
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material.icons.outlined.KeyboardCommandKey
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.Tab
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -61,13 +62,16 @@ import com.tabdeck.app.data.TabExportFormat
 import com.tabdeck.app.model.DedupeMode
 import com.tabdeck.app.model.LibraryQuery
 
-internal enum class AppSection(val label: String, val icon: ImageVector) {
-    DASHBOARD("Overview", Icons.Outlined.Dashboard),
-    LIBRARY("Library", Icons.Outlined.Tab),
-    ORGANIZE("Organize", Icons.Outlined.FilterAlt),
-    TRANSFER("Transfer", Icons.Outlined.SwapHoriz),
-    CONNECT("Control room", Icons.Outlined.Extension),
+internal enum class AppSection(val label: String, val icon: ImageVector, val primary: Boolean = true) {
+    HOME("Home", Icons.Outlined.Dashboard),
+    TABS("Tabs", Icons.Outlined.Tab),
+    OPEN("Open", Icons.Outlined.SwapHoriz),
+    CAPTURE("Capture", Icons.Outlined.Extension),
+    SETTINGS("Settings", Icons.Outlined.Settings),
+    ORGANIZE("Organize", Icons.Outlined.FilterAlt, primary = false),
 }
+
+private val primarySections = AppSection.entries.filter(AppSection::primary)
 
 @Composable
 fun TabDeckRoot(viewModel: TabDeckViewModel) {
@@ -78,7 +82,7 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
     val duplicatePreview by viewModel.duplicatePreview.collectAsStateWithLifecycle()
     val busyAction by viewModel.busyAction.collectAsStateWithLifecycle()
     val pagedTabs = viewModel.pagedTabs.collectAsLazyPagingItems()
-    var section by rememberSaveable { mutableStateOf(AppSection.DASHBOARD) }
+    var section by rememberSaveable { mutableStateOf(AppSection.HOME) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showCommandPalette by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -108,9 +112,9 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
         viewModel.commands.collect { command ->
             when (command) {
                 TabDeckViewModel.AppCommand.OPEN_IMPORT -> showImportDialog = true
-                TabDeckViewModel.AppCommand.OPEN_LIBRARY -> section = AppSection.LIBRARY
-                TabDeckViewModel.AppCommand.OPEN_TRANSFER -> section = AppSection.TRANSFER
-                TabDeckViewModel.AppCommand.OPEN_CONNECT -> section = AppSection.CONNECT
+                TabDeckViewModel.AppCommand.OPEN_LIBRARY -> section = AppSection.TABS
+                TabDeckViewModel.AppCommand.OPEN_TRANSFER -> section = AppSection.OPEN
+                TabDeckViewModel.AppCommand.OPEN_CONNECT -> section = AppSection.CAPTURE
                 TabDeckViewModel.AppCommand.OPEN_AUTOMATE -> section = AppSection.ORGANIZE
                 TabDeckViewModel.AppCommand.OPEN_COMMAND_PALETTE -> showCommandPalette = true
             }
@@ -123,7 +127,7 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
         if (!state.settings.onboardingComplete) {
             OnboardingScreen(
                 onImport = { showImportDialog = true },
-                onConnect = { viewModel.completeOnboarding(); section = AppSection.CONNECT },
+                onConnect = { viewModel.completeOnboarding(); section = AppSection.CAPTURE },
                 onComplete = viewModel::completeOnboarding,
             )
         } else {
@@ -131,15 +135,15 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
                 snackbarHost = { SnackbarHost(snackbarHostState) },
                 floatingActionButton = {
                     ExtendedFloatingActionButton(
-                        onClick = { if (section == AppSection.LIBRARY) showImportDialog = true else showCommandPalette = true },
-                        icon = { Icon(if (section == AppSection.LIBRARY) Icons.Outlined.Add else Icons.Outlined.KeyboardCommandKey, null) },
-                        text = { Text(if (section == AppSection.LIBRARY) "Import" else "Commands") },
+                        onClick = { if (section == AppSection.TABS) showImportDialog = true else showCommandPalette = true },
+                        icon = { Icon(if (section == AppSection.TABS) Icons.Outlined.Add else Icons.Outlined.KeyboardCommandKey, null) },
+                        text = { Text(if (section == AppSection.TABS) "Import" else "Commands") },
                     )
                 },
                 bottomBar = {
                     if (!useDrawer && !useRail) {
                         NavigationBar {
-                            AppSection.entries.forEach { item ->
+                            primarySections.forEach { item ->
                                 NavigationBarItem(
                                     selected = item == section,
                                     onClick = { section = item },
@@ -157,17 +161,18 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
                         useRail -> AppRail(section, { section = it }, { showCommandPalette = true })
                     }
                     when (section) {
-                        AppSection.DASHBOARD -> DashboardScreen(
+                        AppSection.HOME -> DashboardScreen(
                             state = state,
                             installedBrowsers = viewModel.installedBrowsers(),
                             onImport = { showImportDialog = true },
-                            onOpenQuery = { libraryQuery -> viewModel.setLibraryQuery(libraryQuery); section = AppSection.LIBRARY },
+                            onOpenQuery = { libraryQuery -> viewModel.setLibraryQuery(libraryQuery); section = AppSection.TABS },
+                            onOpen = { section = AppSection.OPEN },
                             onOrganize = { section = AppSection.ORGANIZE },
-                            onConnect = { section = AppSection.CONNECT },
+                            onConnect = { section = AppSection.CAPTURE },
                             onApplyRules = { viewModel.applyRules() },
                             onOpenTab = viewModel::openTab,
                         )
-                        AppSection.LIBRARY -> LibraryScreen(
+                        AppSection.TABS -> LibraryScreen(
                             state = state,
                             query = query,
                             tabs = pagedTabs,
@@ -181,10 +186,10 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
                             state = state,
                             currentQuery = query,
                             viewModel = viewModel,
-                            onOpenLibrary = { section = AppSection.LIBRARY },
-                            onOpenTransfer = { section = AppSection.TRANSFER },
+                            onOpenLibrary = { section = AppSection.TABS },
+                            onOpenTransfer = { section = AppSection.OPEN },
                         )
-                        AppSection.TRANSFER -> TransferScreen(
+                        AppSection.OPEN -> TransferScreen(
                             state = state,
                             query = query,
                             selectedCount = selectedIds.size,
@@ -192,12 +197,17 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
                             progress = transferProgress,
                             viewModel = viewModel,
                         )
-                        AppSection.CONNECT -> ConnectScreen(
+                        AppSection.CAPTURE -> CaptureScreen(
                             state = state,
                             installedBrowsers = viewModel.installedBrowsers(),
                             endpoints = viewModel.bridgeEndpoints(),
                             viewModel = viewModel,
                             onBridgeEnabled = setBridgeEnabledSafely,
+                            onImport = { showImportDialog = true },
+                        )
+                        AppSection.SETTINGS -> SettingsScreen(
+                            state = state,
+                            viewModel = viewModel,
                             onImportBackup = { importLauncher.launch(importTypes) },
                             onExportBackup = { exportLauncher.launch("TabDeck-3-backup.json") },
                             onExportMarkdown = { markdownExportLauncher.launch("TabDeck-tabs.md") },
@@ -219,13 +229,14 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
     }
     if (showCommandPalette) {
         val actions = listOf(
-            PaletteAction("Import tabs", "Paste or choose a file", Icons.Outlined.Add, "capture add") { showImportDialog = true },
-            PaletteAction("Search library", "Open the paged tab inventory", Icons.Outlined.Search, "find filter") { section = AppSection.LIBRARY },
-            PaletteAction("Analyze duplicates", "Build a normalized duplicate preview", Icons.Outlined.ContentCopy, "dedupe cleanup") { section = AppSection.LIBRARY; viewModel.analyzeDuplicates(DedupeMode.NORMALIZED_URL) },
+            PaletteAction("Capture tabs", "Paste links or choose a file", Icons.Outlined.Add, "capture add") { showImportDialog = true },
+            PaletteAction("Find tabs", "Search and filter saved tabs", Icons.Outlined.Search, "find filter") { section = AppSection.TABS },
+            PaletteAction("Analyze duplicates", "Build a normalized duplicate preview", Icons.Outlined.ContentCopy, "dedupe cleanup") { section = AppSection.TABS; viewModel.analyzeDuplicates(DedupeMode.NORMALIZED_URL) },
             PaletteAction("Run categorization rules", "Apply enabled RE2/J rules to active tabs", Icons.Outlined.AutoAwesome, "automation regex") { viewModel.applyRules() },
-            PaletteAction("Open automation studio", "Manage views, decks, rules, and groups", Icons.Outlined.FilterAlt) { section = AppSection.ORGANIZE },
-            PaletteAction("Transfer tabs", "Choose a target Android browser", Icons.Outlined.SwapHoriz) { section = AppSection.TRANSFER },
-            PaletteAction("Connector control room", "Bridge, security, appearance, and data", Icons.Outlined.Extension) { section = AppSection.CONNECT },
+            PaletteAction("Organize tabs", "Manage groups, rules, views, and decks", Icons.Outlined.FilterAlt) { section = AppSection.ORGANIZE },
+            PaletteAction("Open tabs", "Choose an installed target browser", Icons.Outlined.SwapHoriz) { section = AppSection.OPEN },
+            PaletteAction("Capture setup", "Share, extension, and Desktop Link options", Icons.Outlined.Extension) { section = AppSection.CAPTURE },
+            PaletteAction("Settings", "Appearance, backups, and local data", Icons.Outlined.Settings) { section = AppSection.SETTINGS },
             PaletteAction("Export backup", "Create a complete portable JSON backup", Icons.Outlined.Backup) { exportLauncher.launch("TabDeck-3-backup.json") },
             PaletteAction("Export Markdown", "Readable grouped outline; Trash excluded", Icons.Outlined.Backup, "markdown text") { markdownExportLauncher.launch("TabDeck-tabs.md") },
             PaletteAction("Export CSV", "Spreadsheet-safe metadata table; Trash excluded", Icons.Outlined.Backup, "csv table") { csvExportLauncher.launch("TabDeck-tabs.csv") },
@@ -238,7 +249,7 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
 @Composable
 private fun AppRail(section: AppSection, onSection: (AppSection) -> Unit, onCommands: () -> Unit) {
     NavigationRail(header = { IconButton(onClick = onCommands) { Icon(Icons.Outlined.KeyboardCommandKey, "Command palette") } }) {
-        AppSection.entries.forEach { item ->
+        primarySections.forEach { item ->
             NavigationRailItem(selected = item == section, onClick = { onSection(item) }, icon = { Icon(item.icon, null) }, label = { Text(item.label) })
         }
     }
@@ -254,10 +265,10 @@ private fun AppDrawer(section: AppSection, onSection: (AppSection) -> Unit, onCo
                 }
                 Column(Modifier.padding(start = 10.dp)) {
                     Text("TabDeck", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                    Text("Android control plane", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Save, find, and open tabs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            AppSection.entries.forEach { item ->
+            primarySections.forEach { item ->
                 NavigationDrawerItem(label = { Text(item.label) }, selected = item == section, onClick = { onSection(item) }, icon = { Icon(item.icon, null) })
             }
             Spacer(Modifier.weight(1f))

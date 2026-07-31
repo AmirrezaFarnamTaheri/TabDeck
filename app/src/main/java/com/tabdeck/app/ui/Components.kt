@@ -2,7 +2,6 @@ package com.tabdeck.app.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,8 +28,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,7 +40,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -71,10 +69,10 @@ fun ScreenHeader(
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(
-                eyebrow.uppercase(),
+                eyebrow,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(title, style = MaterialTheme.typography.headlineMedium)
             Text(
@@ -98,22 +96,17 @@ fun HeroPanel(
     modifier: Modifier = Modifier,
     content: @Composable (() -> Unit)? = null,
 ) {
-    val gradient = Brush.linearGradient(
-        listOf(
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.88f),
-            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
-        ),
-    )
-    Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(30.dp)) {
-        Column(
-            Modifier.background(gradient).padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)) {
-                Icon(icon, null, Modifier.padding(12.dp).size(26.dp), tint = MaterialTheme.colorScheme.primary)
+    OutlinedCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(title, style = MaterialTheme.typography.headlineSmall)
             }
-            Text(title, style = MaterialTheme.typography.headlineSmall)
             Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             content?.invoke()
         }
@@ -132,19 +125,20 @@ fun MetricTile(
     onClick: (() -> Unit)? = null,
 ) {
     val cardModifier = if (onClick == null) modifier else modifier.combinedClickable(onClick = onClick)
-    ElevatedCard(
+    Card(
         modifier = cardModifier,
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (emphasized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (emphasized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
         ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
             }
-            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(helper, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -180,13 +174,16 @@ fun ControlCard(
     trailing: @Composable (() -> Unit)? = null,
     content: @Composable (() -> Unit)? = null,
 ) {
-    ElevatedCard(modifier, shape = RoundedCornerShape(22.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                    Icon(icon, null, Modifier.padding(10.dp).size(21.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
-                Column(Modifier.weight(1f)) {
+    OutlinedCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                Icon(icon, null, Modifier.padding(top = 2.dp).size(21.dp), tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)
                     Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -235,9 +232,9 @@ fun TabCard(
         ViewDensity.DENSE -> 6.dp
     }
     val shape = when (density) {
-        ViewDensity.COMFORTABLE -> 20.dp
-        ViewDensity.COMPACT -> 15.dp
-        ViewDensity.DENSE -> 12.dp
+        ViewDensity.COMFORTABLE -> 16.dp
+        ViewDensity.COMPACT -> 13.dp
+        ViewDensity.DENSE -> 10.dp
     }
     Card(
         modifier = modifier
@@ -318,7 +315,7 @@ fun TabGridCard(
     Card(
         modifier = modifier.combinedClickable(role = Role.Button, onClick = onDetails, onLongClick = onToggle)
             .semantics { this.selected = selected },
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         ),
@@ -358,7 +355,7 @@ fun TabGridCard(
 
 @Composable
 fun MiniPill(text: String, color: Color = MaterialTheme.colorScheme.surfaceVariant) {
-    Surface(shape = CircleShape, color = color) {
+    Surface(shape = RoundedCornerShape(6.dp), color = color) {
         Text(text, Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }
 }
@@ -367,8 +364,8 @@ fun MiniPill(text: String, color: Color = MaterialTheme.colorScheme.surfaceVaria
 fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().padding(vertical = 44.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
-                Icon(icon, null, Modifier.padding(18.dp).size(32.dp), tint = MaterialTheme.colorScheme.primary)
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Icon(icon, null, Modifier.padding(16.dp).size(30.dp), tint = MaterialTheme.colorScheme.primary)
             }
             Text(title, style = MaterialTheme.typography.titleLarge)
             Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -378,7 +375,7 @@ fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifie
 
 @Composable
 fun SecurityPill(text: String) {
-    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+    Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Lock, null, Modifier.size(15.dp))
             Spacer(Modifier.width(5.dp))

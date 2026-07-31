@@ -49,7 +49,7 @@ object TabQueryBuilder {
             clauses += "lastSeenAtEpochMs < ?"
             args += staleBefore
         }
-        query.tags.asSequence().map(String::trim).filter(String::isNotBlank).take(MAX_TAG_FILTERS).forEach { tag ->
+        query.tags.asSequence().map(String::trim).filter(String::isNotBlank).forEach { tag ->
             clauses += "tagsJson LIKE ? ESCAPE '\\'"
             args += "%\"${escapeLike(tag)}\"%"
         }
@@ -57,9 +57,8 @@ object TabQueryBuilder {
         val tokens = query.search.trim()
             .split(Regex("\\s+"))
             .asSequence()
-            .map { it.lowercase(Locale.ROOT).take(MAX_TOKEN_LENGTH) }
+            .map { it.lowercase(Locale.ROOT) }
             .filter(String::isNotBlank)
-            .take(MAX_SEARCH_TOKENS)
             .toList()
         tokens.forEach { token ->
             val value = "%${escapeLike(token)}%"
@@ -86,7 +85,7 @@ object TabQueryBuilder {
             }
             sql.append(" ORDER BY pinned DESC, ").append(column).append(if (descending) " DESC" else " ASC")
             sql.append(", importedAtEpochMs DESC, id COLLATE NOCASE")
-            limit?.coerceIn(1, MAX_LIMIT)?.let {
+            limit?.takeIf { it > 0 }?.let {
                 sql.append(" LIMIT ?")
                 args += it
             }
@@ -102,8 +101,4 @@ object TabQueryBuilder {
         .replace("_", "\\_")
 
     private val SEARCH_COLUMNS = listOf("title", "url", "host", "notes", "tagsJson", "sourceGroup", "assignedGroup")
-    private const val MAX_SEARCH_TOKENS = 8
-    private const val MAX_TOKEN_LENGTH = 96
-    private const val MAX_TAG_FILTERS = 16
-    private const val MAX_LIMIT = 25_000
 }
