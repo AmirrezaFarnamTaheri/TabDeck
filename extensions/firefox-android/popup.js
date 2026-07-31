@@ -1,4 +1,4 @@
-// bridge-runtime.js accepts and canonicalizes /api/v2/import and /api/v3/import.
+// bridge-runtime.js accepts and canonicalizes /api/v1/import, /api/v2/import, and /api/v3/import.
 const $ = selector => document.querySelector(selector);
 const ui = {
   endpoint: $('#endpoint'), token: $('#token'), browser: $('#browser'), deviceName: $('#deviceName'),
@@ -135,7 +135,7 @@ async function testBridgeConnection() {
     await browser.storage.local.set({ endpoint: destination.url });
     const health = new URL(destination.url);
     health.pathname = '/health'; health.search = ''; health.hash = '';
-    const response = await fetchWithTimeout(health.toString(), { method: 'GET', headers: { 'Accept': 'application/json' } }, 7000);
+    const response = await fetchWithTimeout(health.toString(), { method: 'GET', headers: { 'Accept':'application/json' } }, 7000);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload.ok !== true) throw new Error(payload.error || `Bridge returned HTTP ${response.status}.`);
     const expiry = Number(payload.expiresAtEpochMs);
@@ -178,7 +178,7 @@ async function sendSnapshot() {
     setStatus(`Sending ${body.tabs.length} tabs…`);
     const response = await fetchWithTimeout(destination.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-TabDeck-Token': settings.token, 'X-TabDeck-Request-Id': crypto.randomUUID?.() || `${Date.now()}-${Math.random()}` },
+      headers: { 'Content-Type':'application/json', 'X-TabDeck-Token':settings.token, 'X-TabDeck-Request-Id':crypto.randomUUID?.() || `${Date.now()}-${Math.random()}` },
       body: JSON.stringify(body)
     });
     const payload = await response.json().catch(() => ({}));

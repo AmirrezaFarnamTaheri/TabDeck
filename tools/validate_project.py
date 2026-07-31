@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 from versioning import load_version
 
@@ -344,6 +345,8 @@ def validate_release_contracts() -> None:
     export_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabExportCodec.kt").read_text(encoding="utf-8")
     bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")
     bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+    endpoint_match = re.search(r'const val LOOPBACK_ENDPOINT\s*=\s*"([^"]+)"', bridge_network)
+    endpoint_host = urlsplit(endpoint_match.group(1)).hostname if endpoint_match else None
     checks = {
         "bridge API v3": 'request.path == "/api/v3/import"' in bridge and '.put("version", 3)' in bridge,
         "bridge compatibility": all(f'/api/v{version}/import' in bridge for version in (1, 2, 3)),
@@ -359,7 +362,7 @@ def validate_release_contracts() -> None:
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,
         "UTF-8 bounded share import": "fun utf8Prefix" in view_model and "MAX_IMPORT_DOCUMENT_BYTES" in view_model,
         "typed backup classification": "sealed interface DecodeResult" in backup and "decodeClassified" in view_model,
-        "loopback-only bridge": "LOOPBACK_ENDPOINT" in bridge_network and "0.0.0.0" not in bridge,
+        "loopback-only bridge": endpoint_host in {"127.0.0.1", "localhost", "::1"} and "0.0.0.0" not in bridge,
         "session-scoped source identity": "SourceIdentity.encodeTabId" in bridge_parser,
         "identity-version reconciliation guard": "identityVersion == CURRENT_IDENTITY_VERSION" in bridge_parser,
     }
@@ -380,129 +383,4 @@ def validate_release_contracts() -> None:
         if "testBridgeConnection" not in popup or "'/health'" not in popup:
             fail(f"Extension bridge preflight is missing in {folder.relative_to(ROOT)}")
         if "sourceSessionId" not in popup or "getSourceSession" not in popup:
-            fail(f"Extension session-scoped tab identity is missing in {folder.relative_to(ROOT)}")
-    parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
-    identity = (ROOT / "app/src/main/java/com/tabdeck/app/engine/SourceIdentity.kt").read_text(encoding="utf-8")
-    if "SourceIdentity.encodeTabId" not in parser or "sourceSessionId" not in parser:
-        fail("Bridge parser is missing session-scoped source identity")
-    if "sid1:" not in identity or "isSessionScoped" not in identity:
-        fail("Source identity codec contract is incomplete")
-    for required_file in (
-        ROOT / "tools/performance_budget.py",
-        ROOT / "tools/performance-budgets.json",
-        ROOT / "desktop-link/Test-TabDeckLink.ps1",
-        ROOT / "docs/adr/0001-durable-source-identity.md",
-        ROOT / "docs/adr/0002-loopback-bridge-trust-boundary.md",
-        ROOT / "docs/adr/0003-release-provenance.md",
-    ):
-        if not required_file.is_file():
-            fail(f"Missing verification contract: {required_file.relative_to(ROOT)}")
-    ok("Validated TabDeck v1 product, compatibility, bridge, paging, export, bulk-control, widget, and source-identity contracts")
-
-
-def validate_workflow_contracts() -> None:
-    workflows = {
-        "CI": ROOT / ".github/workflows/ci.yml",
-        "Release": ROOT / ".github/workflows/release.yml",
-    }
-    for label, path in workflows.items():
-        if not path.is_file():
-            fail(f"Missing {label} workflow: {path.relative_to(ROOT)}")
-            continue
-        text = path.read_text(encoding="utf-8")
-        if "\t" in text:
-            fail(f"Tab character found in workflow YAML: {path.relative_to(ROOT)}")
-        required_tokens = ["actions/checkout@v6", "actions/setup-java@v5", "gradle/actions/setup-gradle@v6"]
-        for token in required_tokens:
-            if token not in text:
-                fail(f"{label} workflow is missing {token}")
-    ci = workflows["CI"].read_text(encoding="utf-8") if workflows["CI"].is_file() else ""
-    release = workflows["Release"].read_text(encoding="utf-8") if workflows["Release"].is_file() else ""
-    if "gradle wrapper --gradle-version" in ci or "gradle wrapper --gradle-version" in release:
-        fail("Workflows must execute the committed Gradle wrapper instead of regenerating it")
-    for token in ("Verify committed Gradle wrapper", "distributionSha256Sum", "./gradlew --version"):
-        if token not in ci:
-            fail(f"CI workflow contract missing: {token}")
-    for token in (
-        "tools/check_version.py --tag",
-        "lintRelease",
-        "assembleRelease",
-        "bundleRelease",
-        "apksigner",
-        "jarsigner -verify -strict",
-        "--require-android-artifacts",
-        "actions/upload-artifact@v7",
-        "actions/attest@v4",
-        "gh release create",
-        "environment: release",
-        "artifact-metadata: write",
-        "TABDECK_RELEASE_CERT_SHA256",
-        "git rev-list -n 1",
-        "keytool -printcert -jarfile",
-        "--source-commit",
-        "--signing-cert-sha256",
-    ):
-        if token not in release:
-            fail(f"Release workflow contract missing: {token}")
-    packager = (ROOT / "tools/package_release.py").read_text(encoding="utf-8")
-    for token in ('"schemaVersion": 2', '"sourceCommit"', '"releaseTag"', '"signingCertificateSha256"'):
-        if token not in packager:
-            fail(f"Release manifest provenance contract missing: {token}")
-    ok("Validated CI and signed-release workflow contracts")
-
-
-def validate_no_obvious_secrets() -> None:
-    candidates = files(["*.kt", "*.kts", "*.js", "*.json", "*.ps1", "*.md", "*.xml"])
-    patterns = {
-        "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-        "GitHub token": re.compile(r"gh[pousr]_[A-Za-z0-9_]{30,}"),
-        "OpenAI key": re.compile(r"sk-(?:proj-)?[A-Za-z0-9_-]{24,}"),
-    }
-    for path in candidates:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for label, pattern in patterns.items():
-            if pattern.search(text):
-                fail(f"Potential {label} found in {path.relative_to(ROOT)}")
-    ok("Scanned source and documentation for obvious embedded secrets")
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--report", type=Path, help="Write the validation report to this path")
-    args = parser.parse_args()
-
-    validate_xml()
-    validate_json()
-    validate_html()
-    validate_javascript()
-    validate_shell()
-    validate_embedded_xaml()
-    validate_text_integrity()
-    validate_kotlin_structure()
-    validate_compose_icon_imports()
-    validate_powershell_structure()
-    validate_manifest_contracts()
-    validate_product_version()
-    validate_extension_contracts()
-    validate_gradle_wrapper_files()
-    validate_build_coordinates()
-    validate_release_contracts()
-    validate_workflow_contracts()
-    validate_no_obvious_secrets()
-
-    lines = ["TabDeck static validation", "=" * 25]
-    lines.extend(f"PASS: {item}" for item in CHECKS)
-    lines.extend(f"WARN: {item}" for item in WARNINGS)
-    lines.extend(f"FAIL: {item}" for item in ERRORS)
-    lines.append("")
-    lines.append(f"Result: {'FAIL' if ERRORS else 'PASS'} ({len(CHECKS)} checks, {len(WARNINGS)} warnings, {len(ERRORS)} errors)")
-    report = "\n".join(lines) + "\n"
-    print(report, end="")
-    if args.report:
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(report, encoding="utf-8")
-    return 1 if ERRORS else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+            fail(f"Extension session-scoped tab identity is missing in {folder.relative_to(RõB—Ò"¢'6W"Ò…$ôõBò&÷7&2öÖ–âö¦fö6öÒ÷F&FV6²öö'&–FvRô'&–FvU–ÆöE'6W"æ·B"’ç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"¢–FVçF—G’Ò…$ôõBò&÷7&2öÖ–âö¦fö6öÒ÷F&FV6²ööVæv–æRõ6÷W&6T–FVçF—G’æ·B"’ç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"¢–b%6÷W&6T–FVçF—G’æVæ6öFUF$–B"æ÷B–â'6W"÷"'6÷W&6U6W76–öä–B"æ÷B–â'6W# ¢f–Â‚$'&–FvR'6W"—2Ö—76–ær6W76–öâ×66÷VB6÷W&6R–FVçF—G’"¢–b'6–C¢"æ÷B–â–FVçF—G’÷"&—56W76–öå66÷VB"æ÷B–â–FVçF—G“ ¢f–Â‚%6÷W&6R–FVçF—G’6öFV26öçG&7B—2–æ6ö×ÆWFR"¢f÷"&WV—&VEöf–ÆR–â€¢$ôõBò'FööÇ2÷W&f÷&Öæ6Uö'VFvWBç’"À¢$ôõBò'FööÇ2÷W&f÷&Öæ6RÖ'VFvWG2æ§6öâ"À¢$ôõBò&FW6·F÷ÖÆ–æ²õFW7BÕF$FV6´Æ–æ²ç3"À¢$ôõBò&Fö72öG"óÖGW&&ÆR×6÷W&6RÖ–FVçF—G’æÖB"À¢$ôõBò&Fö72öG"ó"ÖÆö÷&6²Ö'&–FvR×G'W7BÖ&÷VæF'’æÖB"À¢$ôõBò&Fö72öG"ó2×&VÆV6R×&÷fVææ6RæÖB"À¢“ ¢–bæ÷B&WV—&VEöf–ÆRæ—5öf–ÆR‚“ ¢f–Â†b$Ö—76–ærfW&–f–6F–öâ6öçG&7C¢·&WV—&VEöf–ÆRç&VÆF—fU÷Fò…$ôõB—Ò"¢ö²‚%fÆ–FFVBF$FV6²c&öGV7BÂ6ö×F–&–Æ—G’Â'&–FvRÂv–ærÂW‡÷'BÂ'VÆ²Ö6öçG&öÂÂv–FvWBÂæB6÷W&6RÖ–FVçF—G’6öçG&7G2"  ¦FVbfÆ–FFU÷v÷&¶fÆ÷uö6öçG&7G2‚’ÓâæöæS ¢v÷&¶fÆ÷w2Ò°¢$4’#¢$ôõBò"æv—F‡V"÷v÷&¶fÆ÷w2ö6’ç–ÖÂ"À¢%&VÆV6R#¢$ôõBò"æv—F‡V"÷v÷&¶fÆ÷w2÷&VÆV6Rç–ÖÂ"À¢Ğ¢f÷"Æ&VÂÂF‚–âv÷&¶fÆ÷w2æ—FV×2‚“ ¢–bæ÷BF‚æ—5öf–ÆR‚“ ¢f–Â†b$Ö—76–ær¶Æ&VÇÒv÷&¶fÆ÷s¢·F‚ç&VÆF—fU÷Fò…$ôõB—Ò"¢6öçF–çVP¢FW‡BÒF‚ç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"¢–b%ÇB"–âFW‡C ¢f–Â†b%F"6†&7FW"f÷VæB–âv÷&¶fÆ÷r”ÔÃ¢·F‚ç&VÆF—fU÷Fò…$ôõB—Ò"¢&WV—&VE÷Fö¶Vç2Ò²&7F–öç2ö6†V6¶÷WDcb"Â&7F–öç2÷6WGWÖ¦fcR"Â&w&FÆRö7F–öç2÷6WGWÖw&FÆTcb%Ğ¢f÷"Fö¶Vâ–â&WV—&VE÷Fö¶Vç3 ¢–bFö¶Vâæ÷B–âFW‡C ¢f–Â†b'¶Æ&VÇÒv÷&¶fÆ÷r—2Ö—76–ær·Fö¶VçÒ"¢6’Òv÷&¶fÆ÷w5²$4’%Òç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"’–bv÷&¶fÆ÷w5²$4’%Òæ—5öf–ÆR‚’VÇ6R" ¢&VÆV6RÒv÷&¶fÆ÷w5²%&VÆV6R%Òç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"’–bv÷&¶fÆ÷w5²%&VÆV6R%Òæ—5öf–ÆR‚’VÇ6R" ¢–b&w&FÆRw&W"ÒÖw&FÆR×fW'6–öâ"–â6’÷"&w&FÆRw&W"ÒÖw&FÆR×fW'6–öâ"–â&VÆV6S ¢f–Â‚%v÷&¶fÆ÷w2×W7BW†V7WFRF†R6öÖÖ—GFVBw&FÆRw&W"–ç7FVBöb&VvVæW&F–ær—B"¢f÷"Fö¶Vâ–â‚%fW&–g’6öÖÖ—GFVBw&FÆRw&W""Â&F—7G&–'WF–öå6†#Se7VÒ"Â"âöw&FÆWrÒ×fW'6–öâ"“ ¢–bFö¶Vâæ÷B–â6“ ¢f–Â†b$4’v÷&¶fÆ÷r6öçG&7BÖ—76–æs¢·Fö¶VçÒ"¢f÷"Fö¶Vâ–â€¢'FööÇ2ö6†V6µ÷fW'6–öâç’Ò×Fr"À¢&Æ–çE&VÆV6R"À¢&76VÖ&ÆU&VÆV6R"À¢&'VæFÆU&VÆV6R"À¢&·6–væW""À¢&¦'6–væW"×fW&–g’×7G&–7B"À¢"Ò×&WV—&RÖæG&ö–BÖ'F–f7G2"À¢&7F–öç2÷WÆöBÖ'F–f7Dcr"À¢&7F–öç2öGFW7DcB"À¢&v‚&VÆV6R7&VFR"À¢&Vçf—&öæÖVçC¢&VÆV6R"À¢&'F–f7BÖÖWFFF¢w&—FR"À¢%D$DT4µõ$TÄT4Uô4U%Eõ4„#Sb"À¢&v—B&WbÖÆ—7BÖâ"À¢&¶W—FööÂ×&–çF6W'BÖ¦&f–ÆR"À¢"Ò×6÷W&6RÖ6öÖÖ—B"À¢"Ò×6–væ–ærÖ6W'B×6†#Sb"À¢“ ¢–bFö¶Vâæ÷B–â&VÆV6S ¢f–Â†b%&VÆV6Rv÷&¶fÆ÷r6öçG&7BÖ—76–æs¢·Fö¶VçÒ"¢6¶vW"Ò…$ôõBò'FööÇ2÷6¶vU÷&VÆV6Rç’"’ç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"¢f÷"Fö¶Vâ–â‚r'66†VÖfW'6–öâ#¢"rÂr'6÷W&6T6öÖÖ—B"rÂr'&VÆV6UFr"rÂr'6–væ–æt6W'F–f–6FU6†#Sb"r“ ¢–bFö¶Vâæ÷B–â6¶vW# ¢f–Â†b%&VÆV6RÖæ–fW7B&÷fVææ6R6öçG&7BÖ—76–æs¢·Fö¶VçÒ"¢ö²‚%fÆ–FFVB4’æB6–væVB×&VÆV6Rv÷&¶fÆ÷r6öçG&7G2"  ¦FVbfÆ–FFUöæõöö'f–÷W5÷6V7&WG2‚’ÓâæöæS ¢6æF–FFW2Òf–ÆW2…²"¢æ·B"Â"¢æ·G2"Â"¢æ§2"Â"¢æ§6öâ"Â"¢ç3"Â"¢æÖB"Â"¢ç†ÖÂ%Ò¢GFW&ç2Ò°¢'&—fFR¶W’#¢&Ræ6ö×–ÆR‡""ÒÒÒÒÔ$Tt”âƒó¥%4ÄT2ÄõTå54‚“õ$•dDR´U’ÒÒÒÒÒ"’À¢$v—D‡V"Fö¶Vâ#¢&Ræ6ö×–ÆR‡"&v…·÷W7%Õõ´Õ¦×£Ó•õ×³3ÇÒ"’À¢$÷Vä’¶W’#¢&Ræ6ö×–ÆR‡"'6²Òƒó§&ö¢Ò“õ´Õ¦×£Ó•òÕ×³#BÇÒ"’À¢Ğ¢f÷"F‚–â6æF–FFW3 ¢FW‡BÒF‚ç&VE÷FW‡B†Væ6öF–æsÒ'WFbÓ‚"ÂW'&÷'3Ò'&WÆ6R"¢f÷"Æ&VÂÂGFW&â–âGFW&ç2æ—FV×2‚“ ¢–bGFW&âç6V&6‚‡FW‡B“ ¢f–Â†b%÷FVçF–Â¶Æ&VÇÒf÷VæB–â·F‚ç&VÆF—fU÷Fò…$ôõB—Ò"¢ö²‚%66ææVB6÷W&6RæBFö7VÖVçFF–öâf÷"ö'f–÷W2VÖ&VFFVB6V7&WG2"  ¦FVbÖ–â‚’Óâ–çC ¢'6W"Ò&w'6Rä&wVÖVçE'6W"‚¢'6W"æFEö&wVÖVçB‚"Ò×&W÷'B"ÂG—SÕF‚Â†VÇÒ%w&—FRF†RfÆ–FF–öâ&W÷'BFòF†—2F‚"¢&w2Ò'6W"ç'6Uö&w2‚ ¢fÆ–FFU÷†ÖÂ‚¢fÆ–FFUö§6öâ‚¢fÆ–FFUö‡FÖÂ‚¢fÆ–FFUö¦f67&—B‚¢fÆ–FFU÷6†VÆÂ‚¢fÆ–FFUöVÖ&VFFVE÷†ÖÂ‚¢fÆ–FFU÷FW‡Eö–çFVw&—G’‚¢fÆ–FFUö¶÷FÆ–å÷7G'V7GW&R‚¢fÆ–FFUö6ö×÷6Uö–6öåö–×÷'G2‚¢fÆ–FFU÷÷vW'6†VÆÅ÷7G'V7GW&R‚¢fÆ–FFUöÖæ–fW7Eö6öçG&7G2‚¢fÆ–FFU÷&öGV7E÷fW'6–öâ‚¢fÆ–FFUöW‡FVç6–öåö6öçG&7G2‚¢fÆ–FFUöw&FÆU÷w&W%öf–ÆW2‚¢fÆ–FFUö'V–ÆEö6ö÷&F–æFW2‚¢fÆ–FFU÷&VÆV6Uö6öçG&7G2‚¢fÆ–FFU÷v÷&¶fÆ÷uö6öçG&7G2‚¢fÆ–FFUöæõöö'f–÷W5÷6V7&WG2‚ ¢Æ–æW2Ò²%F$FV6²7FF–2fÆ–FF–öâ"Â#Ò"¢#UĞ¢Æ–æW2æW‡FVæB†b%53¢¶—FV×Ò"f÷"—FVÒ–â4„T4µ2¢Æ–æW2æW‡FVæB†b%t$ã¢¶—FV×Ò"f÷"—FVÒ–ât$ä”äu2¢Æ–æW2æW‡FVæB†b$d”Ã¢¶—FV×Ò"f÷"—FVÒ–âU%$õ%2¢Æ–æW2æVæB‚""¢Æ–æW2æVæB†b%&W7VÇC¢²td”Âr–bU%$õ%2VÇ6Ru52wÒ‡¶ÆVâ„4„T4µ2—Ò6†V6·2Â¶ÆVâ…t$ä”äu2—Òv&æ–æw2Â¶ÆVâ„U%$õ%2—ÒW'&÷'2’"¢&W÷'BÒ%Æâ"æ¦ö–â†Æ–æW2’²%Æâ ¢&–çB‡&W÷'BÂVæCÒ""¢–b&w2ç&W÷'C ¢&w2ç&W÷'Bç&VçBæÖ¶F—"‡&VçG3ÕG'VRÂW†—7Eöö³ÕG'VR¢&w2ç&W÷'Bçw&—FU÷FW‡B‡&W÷'BÂVæ6öF–æsÒ'WFbÓ‚"¢&WGW&â–bU%$õ%2VÇ6R   ¦–bõöæÖUõòÓÒ%õöÖ–åõò# ¢7—2æW†—B†Ö–â‚’ 
