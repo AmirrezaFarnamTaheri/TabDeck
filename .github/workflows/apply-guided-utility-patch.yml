@@ -1,0 +1,38 @@
+name: Apply guided utility patch
+
+on:
+  push:
+    branches:
+      - codex/guided-utility-v1.1
+    paths:
+      - .github/tabdeck-guided.patch.ready
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-guided-utility-patch
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: codex/guided-utility-v1.1
+          fetch-depth: 0
+
+      - name: Apply verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/tabdeck-guided.patch.part-* | base64 --decode | gzip -d > /tmp/tabdeck-guided.patch
+          printf '%s  %s\n' 'd651151f48d7d96aee72e109a8ea6e965c3a909da0100fb7dea141bb97617258' '/tmp/tabdeck-guided.patch' | sha256sum -c -
+          git apply --index --whitespace=error /tmp/tabdeck-guided.patch
+          git rm .github/tabdeck-guided.patch.part-* .github/tabdeck-guided.patch.ready .github/workflows/apply-guided-utility-patch.yml
+          git config user.name 'TabDeck Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'Implement guided utility and complete tab restoration'
+          git push origin HEAD:codex/guided-utility-v1.1
