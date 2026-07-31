@@ -1,0 +1,79 @@
+name: Fix guided utility compile omissions
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-guided-compile.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/guided-utility-v1.1
+          fetch-depth: 0
+
+      - name: Apply bounded compile correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          parser_path = Path('app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt')
+          parser = parser_path.read_text(encoding='utf-8')
+          replacements = {
+              'cleanText(root.optString("sourceLabel", sourceBrowser.displayName))': 'cleanText(root.optString("sourceLabel", sourceBrowser.displayName), 120)',
+              'cleanText(root.optString("deviceName", root.optString("deviceId")))': 'cleanText(root.optString("deviceName", root.optString("deviceId")), 120)',
+              'val sourceSessionId = cleanIdentifier(': 'val sourceSessionId = cleanText(',
+              'cleanText(root.optString("group"))': 'cleanText(root.optString("group"), 120)',
+              'cleanText(item.optString("deviceId", deviceName))': 'cleanText(item.optString("deviceId", deviceName), 120)',
+              'cleanIdentifier(item.optString("id", item.optString("tabId")), 160)': 'cleanText(item.optString("id", item.optString("tabId")), 160)',
+              'cleanText(item.optString("group", sessionGroup))': 'cleanText(item.optString("group", sessionGroup), 120)',
+              'title = cleanText(item.optString("title")),': 'title = cleanText(item.optString("title"), 500),',
+          }
+          for old, new in replacements.items():
+              count = parser.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one parser occurrence for {old!r}, found {count}')
+              parser = parser.replace(old, new, 1)
+          parser_path.write_text(parser, encoding='utf-8')
+
+          screens_path = Path('app/src/main/java/com/tabdeck/app/ui/Screens.kt')
+          screens = screens_path.read_text(encoding='utf-8')
+          if 'private data class MetricSpec(' in screens:
+              raise SystemExit('MetricSpec already exists')
+          needle = '@Composable\nprivate fun ActivityCard(icon: ImageVector, title: String, body: String) {'
+          replacement = '''private data class MetricSpec(
+              val label: String,
+              val value: Int,
+              val helper: String,
+              val icon: ImageVector,
+              val action: () -> Unit,
+          )
+
+          @Composable
+          private fun ActivityCard(icon: ImageVector, title: String, body: String) {'''
+          if screens.count(needle) != 1:
+              raise SystemExit('ActivityCard insertion point is not unique')
+          screens_path.write_text(screens.replace(needle, replacement, 1), encoding='utf-8')
+          PY
+
+          git diff --check
+          python3 tools/validate_guided_utility.py
+          python3 tools/validate_project.py --report build-validation-report.txt
+          git add \
+            app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt \
+            app/src/main/java/com/tabdeck/app/ui/Screens.kt \
+            build-validation-report.txt
+          git config user.name 'TabDeck Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'Fix guided utility compile omissions'
+          git push origin HEAD:codex/guided-utility-v1.1
