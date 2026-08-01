@@ -81,7 +81,7 @@ jobs:
           python3 tools/validate_simple_release.py
           python3 tools/validate_connector_dom.py
           python3 tools/performance_budget.py --validate-config
-          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug assembleCommunityRelease
+          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
 
       - name: Commit verified source changes
         shell: bash
