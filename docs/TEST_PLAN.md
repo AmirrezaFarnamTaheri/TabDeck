@@ -134,3 +134,11 @@ For every declared package, installed/uninstalled/disabled:
 - dashboard aggregate invalidation cost.
 - baseline/startup profile collection and release-mode Macrobenchmark.
 - both widgets and all shortcuts after update/reset/process death.
+
+## v1.2 automation and widget regression matrix
+
+- `MaintenancePolicyTest`: positive retention clamping, deterministic cutoffs, and underflow safety.
+- `SnapshotJsonCodecTest.maintenancePreferencesRoundTrip`: backup v3 preserves maintenance enablement and retention settings.
+- Static contracts require the unique maintenance worker, all four widget receivers/providers, deep-link deck action, and core-policy coverage.
+- Android CI must compile WorkManager scheduling, run unit tests and lint, and assemble both debug and community release APKs.
+- Device validation should pin all four widgets, launch a deck from the Deck Launcher, toggle automatic maintenance, run maintenance manually, and confirm process-restart persistence.

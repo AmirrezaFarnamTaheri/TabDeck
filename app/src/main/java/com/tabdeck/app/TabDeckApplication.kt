@@ -13,6 +13,12 @@ class TabDeckApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        applicationScope.launch { repository.initialize() }
+        applicationScope.launch {
+            repository.initialize()
+            MaintenanceWorker.reconcileSchedule(
+                this@TabDeckApplication,
+                repository.currentState().settings.automaticMaintenanceEnabled,
+            )
+        }
     }
 }

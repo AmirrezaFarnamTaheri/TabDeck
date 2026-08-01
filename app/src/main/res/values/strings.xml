@@ -19,4 +19,6 @@
     <string name="shortcut_commands_short">Tab commands</string>
     <string name="shortcut_commands_long">Open the TabDeck command palette</string>
     <string name="quick_widget_description">Fast access to TabDeck import, library, transfer, and connector controls</string>
+    <string name="transfer_status_widget_description">Recent open requests and automatic maintenance health</string>
+    <string name="deck_launcher_widget_description">Open a saved TabDeck deck in an installed browser</string>
 </resources>

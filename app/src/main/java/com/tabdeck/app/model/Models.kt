@@ -252,6 +252,15 @@ data class BridgeSession(
 )
 
 @Immutable
+data class MaintenanceStatus(
+    val lastRunAtEpochMs: Long? = null,
+    val awakened: Int = 0,
+    val pruned: Int = 0,
+    val failed: Boolean = false,
+    val message: String = "",
+)
+
+@Immutable
 data class LibraryQuery(
     val search: String = "",
     val statuses: Set<TabStatus> = setOf(TabStatus.ACTIVE),
@@ -334,6 +343,7 @@ data class ControlState(
     val importHistory: List<ImportSession> = emptyList(),
     val settings: AppSettings = AppSettings(),
     val bridgeSession: BridgeSession = BridgeSession(),
+    val maintenanceStatus: MaintenanceStatus = MaintenanceStatus(),
 )
 
 @Immutable
@@ -356,6 +366,8 @@ data class AppSettings(
     val hapticFeedback: Boolean = true,
     val syncMissingPolicy: SyncMissingPolicy = SyncMissingPolicy.KEEP,
     val staleAfterDays: Int = 30,
+    val automaticMaintenanceEnabled: Boolean = true,
+    val trashRetentionDays: Int = 30,
     val showAdvancedControls: Boolean = false,
 )
 

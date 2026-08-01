@@ -381,6 +381,13 @@ def validate_release_contracts() -> None:
         "query-wide bulk controls": "selectAllMatching" in screens and "editTagsOnSelected" in screens,
         "chunked tag editing": "suspend fun editTags" in repository and "chunked(SQLITE_IN_CHUNK)" in repository,
         "quick control widget": "QuickCaptureWidgetReceiver" in manifest and "quick_capture_widget_info" in manifest,
+        "automation and recovery widgets": all(token in manifest for token in (
+            "TransferStatusWidgetReceiver", "DeckLauncherWidgetReceiver",
+            "transfer_status_widget_info", "deck_launcher_widget_info",
+        )),
+        "automatic maintenance worker": (ROOT / "app/src/main/java/com/tabdeck/app/MaintenanceWorker.kt").is_file(),
+        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
+        "deck widget deep link": "ACTION_OPEN_DECK" in view_model and "EXTRA_DECK_ID" in view_model,
         "core harness Compose stub": "ComposeRuntimeStubs.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
         "human-readable exports": all(token in export_codec for token in ("MARKDOWN", "CSV", "NETSCAPE_BOOKMARKS", "csvCell")),
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,

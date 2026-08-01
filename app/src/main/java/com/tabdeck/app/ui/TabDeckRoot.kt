@@ -85,6 +85,7 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
     var section by rememberSaveable { mutableStateOf(AppSection.HOME) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showCommandPalette by remember { mutableStateOf(false) }
+    var requestedDeckId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
@@ -111,12 +112,16 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
     LaunchedEffect(Unit) {
         viewModel.commands.collect { command ->
             when (command) {
-                TabDeckViewModel.AppCommand.OPEN_IMPORT -> showImportDialog = true
-                TabDeckViewModel.AppCommand.OPEN_LIBRARY -> section = AppSection.TABS
-                TabDeckViewModel.AppCommand.OPEN_TRANSFER -> section = AppSection.OPEN
-                TabDeckViewModel.AppCommand.OPEN_CONNECT -> section = AppSection.CAPTURE
-                TabDeckViewModel.AppCommand.OPEN_AUTOMATE -> section = AppSection.ORGANIZE
-                TabDeckViewModel.AppCommand.OPEN_COMMAND_PALETTE -> showCommandPalette = true
+                TabDeckViewModel.AppCommand.OpenImport -> showImportDialog = true
+                TabDeckViewModel.AppCommand.OpenLibrary -> section = AppSection.TABS
+                TabDeckViewModel.AppCommand.OpenTransfer -> section = AppSection.OPEN
+                TabDeckViewModel.AppCommand.OpenConnect -> section = AppSection.CAPTURE
+                TabDeckViewModel.AppCommand.OpenAutomate -> section = AppSection.ORGANIZE
+                TabDeckViewModel.AppCommand.OpenCommandPalette -> showCommandPalette = true
+                is TabDeckViewModel.AppCommand.OpenDeck -> {
+                    requestedDeckId = command.deckId
+                    section = AppSection.OPEN
+                }
             }
         }
     }
@@ -196,6 +201,8 @@ fun TabDeckRoot(viewModel: TabDeckViewModel) {
                             installedBrowsers = viewModel.installedBrowsers(),
                             progress = transferProgress,
                             viewModel = viewModel,
+                            requestedDeckId = requestedDeckId,
+                            onDeckRequestConsumed = { requestedDeckId = null },
                         )
                         AppSection.CAPTURE -> CaptureScreen(
                             state = state,

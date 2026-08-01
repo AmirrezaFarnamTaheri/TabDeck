@@ -1,41 +1,25 @@
-# TabDeck v1.1.0 release notes
+# TabDeck v1.2.0 release notes
 
-TabDeck v1.1.0 turns the first release into an honest guided utility and repairs Android browser restore behavior.
+TabDeck v1.2.0 adds local automation and operational visibility without introducing a cloud account or remote telemetry.
 
-## Fixed
+## Automation and recovery
 
-- Every Android restore now requests a distinct new browser tab instead of relying on a plain URL intent that a browser may reuse in the current task.
-- Transfer status now reports dispatched requests and failures rather than claiming a destination page loaded without confirmation.
-- Browser installation is presented only as an available open target, never as permission to read live tabs.
+- A unique daily WorkManager task restores due snoozed tabs and removes Trash older than the configured retention period.
+- Work is constrained when the battery or device storage is low, uses bounded exponential retry, and is idempotently replaced rather than duplicated.
+- Settings can enable or disable automatic maintenance, set retention days, and run maintenance immediately.
+- The most recent maintenance outcome is stored locally and shown in Settings and the activity widget.
 
-## Guided Android experience
+## Widgets
 
-- New primary structure: **Home, Tabs, Open, Capture, Settings**.
-- Home leads with Capture, Browse, and Open instead of health scores and implementation terminology.
-- Capture explains Android Share, import, extension, and Desktop Link routes before bridge details.
-- Open clearly separates source scope, destination, pacing, confirmation, progress, and history.
-- Flat outlined surfaces, restrained radii, lighter type hierarchy, and a deep teal/navy/amber identity replace the decorative generic-card treatment.
-- Dynamic color is off by default so the product identity remains stable.
-
-## Complete operations
-
-- Removed arbitrary item-count ceilings from imports, backups, query selection, tags, rules, groups, views, decks, duplicate analysis, sharing, copying, transfers, and desktop capture.
-- Removed arbitrary upper ceilings from bridge-session duration, stale thresholds, rule priority, and display ordering.
-- Desktop Link sends complete selections by splitting payloads according to request bytes instead of dropping later tabs.
-- Protocol protections remain for request bytes, URL validity, authentication rate, identifiers, timestamps, and regex complexity.
-
-## Desktop Link
-
-- Rebuilt as a four-step workspace: Device, Browser tabs, Selection, Send to TabDeck.
-- Added clearer device, browser-session, and selection status.
-- Made capture the primary action and moved open/close/export operations into secondary tools.
-- Removed fixed socket, capture, open, and close item ceilings.
+- **Deck Launcher** opens a saved deck directly in the browser-target workflow.
+- **Transfer Status** shows recent dispatched open requests and maintenance health.
+- Existing collection-health and quick-capture widgets now refresh together with the new widgets after relevant state changes.
 
 ## Compatibility
 
 - Room schema: v3
-- Backup format: v3
+- Backup format: v3, with backward-compatible maintenance settings
 - Saved-query codec: v2
 - Bridge API: v3 with v1/v2 route compatibility
 
-Install `TabDeck-v1.1.0.apk` from the matching GitHub Release and verify it against the release checksums and certificate fingerprint.
+Install `TabDeck-v1.2.0.apk` from the matching GitHub Release and verify it against the release checksums and certificate fingerprint.
