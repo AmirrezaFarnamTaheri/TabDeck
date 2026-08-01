@@ -65,102 +65,111 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              return text.replace(old, new, 1)
+
           widget = Path('app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt')
           text = widget.read_text(encoding='utf-8')
-          text = text.replace(
-              'import kotlinx.coroutines.Dispatchers\n',
-              'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.Dispatchers\n',
+          if 'import kotlinx.coroutines.CancellationException\n' not in text:
+              text = replace_once(
+                  text,
+                  'import kotlinx.coroutines.Dispatchers\n',
+                  'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.Dispatchers\n',
+                  'coroutine import',
+              )
+          if 'import java.util.Date\n' not in text:
+              text = replace_once(
+                  text,
+                  'import java.text.DateFormat\n',
+                  'import java.text.DateFormat\nimport java.util.Date\n',
+                  'date import',
+              )
+          old_widget_updates = (
+              'suspend fun updateAllTabDeckWidgets(context: Context) {\n'
+              '    TabDeckWidget().updateAll(context)\n'
+              '    QuickCaptureWidget().updateAll(context)\n'
+              '    TransferStatusWidget().updateAll(context)\n'
+              '    DeckLauncherWidget().updateAll(context)\n'
+              '}\n'
           )
-          text = text.replace('import java.text.DateFormat\n', 'import java.text.DateFormat\nimport java.util.Date\n')
-          old = '''suspend fun updateAllTabDeckWidgets(context: Context) {
-              TabDeckWidget().updateAll(context)
-              QuickCaptureWidget().updateAll(context)
-              TransferStatusWidget().updateAll(context)
-              DeckLauncherWidget().updateAll(context)
-          }
-          '''
-          new = '''suspend fun updateAllTabDeckWidgets(context: Context) {
-              listOf(
-                  TabDeckWidget(),
-                  QuickCaptureWidget(),
-                  TransferStatusWidget(),
-                  DeckLauncherWidget(),
-              ).forEach { widget ->
-                  try {
-                      widget.updateAll(context)
-                  } catch (cancelled: CancellationException) {
-                      throw cancelled
-                  } catch (_: Exception) {
-                      // Widgets are derived UI. A launcher/rendering failure must not fail a completed data mutation.
-                  }
-              }
-          }
-          '''
-          if old not in text:
-              raise SystemExit('widget update block not found')
-          text = text.replace(old, new)
-          old = 'private fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(epochMs)'
-          new = 'internal fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMs))'
-          if old not in text:
-              raise SystemExit('widget time formatter not found')
+          new_widget_updates = (
+              'suspend fun updateAllTabDeckWidgets(context: Context) {\n'
+              '    listOf(\n'
+              '        TabDeckWidget(),\n'
+              '        QuickCaptureWidget(),\n'
+              '        TransferStatusWidget(),\n'
+              '        DeckLauncherWidget(),\n'
+              '    ).forEach { widget ->\n'
+              '        try {\n'
+              '            widget.updateAll(context)\n'
+              '        } catch (cancelled: CancellationException) {\n'
+              '            throw cancelled\n'
+              '        } catch (_: Exception) {\n'
+              '            // Widgets are derived UI. A launcher/rendering failure must not fail a completed data mutation.\n'
+              '        }\n'
+              '    }\n'
+              '}\n'
+          )
+          text = replace_once(text, old_widget_updates, new_widget_updates, 'widget update block')
+          text = replace_once(
+              text,
+              'private fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(epochMs)',
+              'internal fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMs))',
+              'widget time formatter',
+          )
           widget.write_text(text, encoding='utf-8')
 
           repository = Path('app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt')
           text = repository.read_text(encoding='utf-8')
-          old = '''        val completedAt = System.currentTimeMillis()
-              val awakened = tabs.wakeDueTabs(completedAt)
-              val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
-              val status = MaintenanceStatus(
-          '''
-          new = '''        val completedAt = System.currentTimeMillis()
-              val (awakened, pruned) = database.withTransaction {
-                  val awakened = tabs.wakeDueTabs(completedAt)
-                  val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
-                  awakened to pruned
-              }
-              val status = MaintenanceStatus(
-          '''
-          if old not in text:
-              raise SystemExit('maintenance mutation block not found')
-          text = text.replace(old, new)
-          old = '''        settingsStore.recordMaintenance(status)
-              if (awakened > 0 || pruned > 0) refreshWidgets()
-              status
-          '''
-          new = '''        settingsStore.recordMaintenance(status)
-              refreshWidgets()
-              status
-          '''
-          if old not in text:
-              raise SystemExit('maintenance refresh block not found')
+          old_mutation = (
+              '        val awakened = tabs.wakeDueTabs(completedAt)\n'
+              '        val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))\n'
+          )
+          new_mutation = (
+              '        val (awakened, pruned) = database.withTransaction {\n'
+              '            val awakened = tabs.wakeDueTabs(completedAt)\n'
+              '            val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))\n'
+              '            awakened to pruned\n'
+              '        }\n'
+          )
+          text = replace_once(text, old_mutation, new_mutation, 'maintenance mutation block')
+          text = replace_once(
+              text,
+              '        if (awakened > 0 || pruned > 0) refreshWidgets()\n',
+              '        refreshWidgets()\n',
+              'maintenance refresh block',
+          )
           repository.write_text(text, encoding='utf-8')
 
           test = Path('app/src/test/java/com/tabdeck/app/widget/TabDeckWidgetFormattingTest.kt')
           test.parent.mkdir(parents=True, exist_ok=True)
-          test.write_text('''package com.tabdeck.app.widget
-
-          import org.junit.Assert.assertTrue
-          import org.junit.Test
-
-          class TabDeckWidgetFormattingTest {
-              @Test
-              fun epochTimestampFormatsAsDate() {
-                  assertTrue(formatWidgetTime(0L).isNotBlank())
-              }
-          }
-          ''', encoding='utf-8')
+          test.write_text(
+              'package com.tabdeck.app.widget\n\n'
+              'import org.junit.Assert.assertTrue\n'
+              'import org.junit.Test\n\n'
+              'class TabDeckWidgetFormattingTest {\n'
+              '    @Test\n'
+              '    fun epochTimestampFormatsAsDate() {\n'
+              '        assertTrue(formatWidgetTime(0L).isNotBlank())\n'
+              '    }\n'
+              '}\n',
+              encoding='utf-8',
+          )
 
           validator = Path('tools/validate_project.py')
           text = validator.read_text(encoding='utf-8')
           needle = '        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),\n'
-          addition = '''        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
-              "maintenance transaction and status refresh": "database.withTransaction" in repository and "settingsStore.recordMaintenance(status)\\n        refreshWidgets()" in repository,
-              "failure-isolated widget refresh": "catch (_: Exception)" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),
-              "widget timestamp date conversion": "format(Date(epochMs))" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),
-          '''
-          if needle not in text:
-              raise SystemExit('validator anchor not found')
-          validator.write_text(text.replace(needle, addition), encoding='utf-8')
+          addition = (
+              needle
+              + '        "maintenance transaction and status refresh": "database.withTransaction" in repository and "settingsStore.recordMaintenance(status)\\n        refreshWidgets()" in repository,\n'
+              + '        "failure-isolated widget refresh": "catch (_: Exception)" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),\n'
+              + '        "widget timestamp date conversion": "format(Date(epochMs))" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),\n'
+          )
+          text = replace_once(text, needle, addition, 'validator anchor')
+          validator.write_text(text, encoding='utf-8')
           PY
 
       - name: Verify committed Gradle wrapper
