@@ -3,6 +3,7 @@ import com.tabdeck.app.data.TabExportFormat
 import com.tabdeck.app.data.BackupInputClassifier
 import com.tabdeck.app.engine.DedupeEngine
 import com.tabdeck.app.engine.SourceIdentity
+import com.tabdeck.app.engine.MaintenancePolicy
 import com.tabdeck.app.engine.UrlExtractor
 import com.tabdeck.app.engine.UrlNormalizer
 import com.tabdeck.app.model.BrowserId
@@ -93,6 +94,10 @@ fun main() {
     checkThat(SourceIdentity.isSessionScoped(firstSessionTab), "session-scoped ID was not recognized")
     checkThat(SourceIdentity.encodeTabId(null, "42") == "42", "legacy source ID compatibility changed")
     checkThat(SourceIdentity.encodeTabId("session", "tab\u0000  7").length <= SourceIdentity.MAX_OPAQUE_TAB_ID_LENGTH, "source ID exceeded storage bound")
+
+    checkThat(MaintenancePolicy.retentionDays(0) == 1, "maintenance retention did not clamp to one day")
+    checkThat(MaintenancePolicy.pruneBeforeEpochMs(10L * MaintenancePolicy.DAY_MS, 3) == 7L * MaintenancePolicy.DAY_MS, "maintenance cutoff was incorrect")
+    checkThat(MaintenancePolicy.pruneBeforeEpochMs(MaintenancePolicy.DAY_MS, Int.MAX_VALUE) == 0L, "maintenance cutoff underflowed")
 
     val exportTabs = tabs + TabItem(id = "formula", url = "https://safe.example", title = "=HYPERLINK(\"bad\")", notes = "<private>")
     val csv = TabExportCodec.encode(exportTabs, TabExportFormat.CSV)

@@ -101,7 +101,15 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     private val _busyAction = MutableStateFlow<String?>(null)
     val busyAction: StateFlow<String?> = _busyAction.asStateFlow()
 
-    enum class AppCommand { OPEN_IMPORT, OPEN_LIBRARY, OPEN_TRANSFER, OPEN_CONNECT, OPEN_AUTOMATE, OPEN_COMMAND_PALETTE }
+    sealed interface AppCommand {
+        data object OpenImport : AppCommand
+        data object OpenLibrary : AppCommand
+        data object OpenTransfer : AppCommand
+        data object OpenConnect : AppCommand
+        data object OpenAutomate : AppCommand
+        data object OpenCommandPalette : AppCommand
+        data class OpenDeck(val deckId: String) : AppCommand
+    }
 
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 24)
     val commands = MutableSharedFlow<AppCommand>(extraBufferCapacity = 8)
@@ -132,12 +140,15 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun importFromIntent(intent: Intent?) {
         if (intent == null) return
         when (intent.action) {
-            ACTION_OPEN_IMPORT -> commands.tryEmit(AppCommand.OPEN_IMPORT)
-            ACTION_OPEN_LIBRARY -> commands.tryEmit(AppCommand.OPEN_LIBRARY)
-            ACTION_OPEN_TRANSFER -> commands.tryEmit(AppCommand.OPEN_TRANSFER)
-            ACTION_OPEN_CONNECT -> commands.tryEmit(AppCommand.OPEN_CONNECT)
-            ACTION_OPEN_AUTOMATE -> commands.tryEmit(AppCommand.OPEN_AUTOMATE)
-            ACTION_OPEN_COMMAND_PALETTE -> commands.tryEmit(AppCommand.OPEN_COMMAND_PALETTE)
+            ACTION_OPEN_IMPORT -> commands.tryEmit(AppCommand.OpenImport)
+            ACTION_OPEN_LIBRARY -> commands.tryEmit(AppCommand.OpenLibrary)
+            ACTION_OPEN_TRANSFER -> commands.tryEmit(AppCommand.OpenTransfer)
+            ACTION_OPEN_CONNECT -> commands.tryEmit(AppCommand.OpenConnect)
+            ACTION_OPEN_AUTOMATE -> commands.tryEmit(AppCommand.OpenAutomate)
+            ACTION_OPEN_COMMAND_PALETTE -> commands.tryEmit(AppCommand.OpenCommandPalette)
+            ACTION_OPEN_DECK -> intent.getStringExtra(EXTRA_DECK_ID)
+                ?.takeIf(String::isNotBlank)
+                ?.let { commands.tryEmit(AppCommand.OpenDeck(it)) }
         }
         viewModelScope.launch(Dispatchers.IO) {
             val sourcePackage = sequenceOf(
@@ -570,6 +581,21 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
     fun setHapticFeedback(value: Boolean) = updateSettings { it.copy(hapticFeedback = value) }
     fun setSyncMissingPolicy(value: SyncMissingPolicy) = updateSettings { it.copy(syncMissingPolicy = value) }
     fun setStaleAfterDays(value: Int) = updateSettings { it.copy(staleAfterDays = value.coerceAtLeast(1)) }
+    fun setTrashRetentionDays(value: Int) = updateSettings { it.copy(trashRetentionDays = value.coerceAtLeast(1)) }
+    fun setAutomaticMaintenance(value: Boolean) = launch(Dispatchers.IO) {
+        repository.updateSettings { it.copy(automaticMaintenanceEnabled = value) }
+        MaintenanceWorker.reconcileSchedule(getApplication(), value)
+        messages.emit(if (value) "Automatic maintenance enabled" else "Automatic maintenance disabled")
+    }
+    fun runMaintenanceNow() = launch(Dispatchers.IO) {
+        _busyAction.value = "Running maintenance"
+        try {
+            val result = repository.runMaintenance(state.value.settings.trashRetentionDays)
+            messages.emit(result.message)
+        } finally {
+            _busyAction.value = null
+        }
+    }
     fun setShowAdvancedControls(value: Boolean) = updateSettings { it.copy(showAdvancedControls = value) }
     fun setAutoCategorize(value: Boolean) = updateSettings { it.copy(autoCategorizeImports = value) }
     fun setStripTracking(value: Boolean) = updateSettings { it.copy(stripTrackingParameters = value) }
@@ -586,6 +612,7 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
         transferJob = null
         setBridgeEnabled(false)
         repository.reset()
+        MaintenanceWorker.reconcileSchedule(getApplication(), true)
         clearSelection()
         _libraryQuery.value = LibraryQuery()
         messages.emit("TabDeck data reset and defaults restored")
@@ -704,5 +731,7 @@ class TabDeckViewModel(application: Application) : AndroidViewModel(application)
         const val ACTION_OPEN_CONNECT = "com.tabdeck.app.OPEN_CONNECT"
         const val ACTION_OPEN_AUTOMATE = "com.tabdeck.app.OPEN_AUTOMATE"
         const val ACTION_OPEN_COMMAND_PALETTE = "com.tabdeck.app.OPEN_COMMAND_PALETTE"
+        const val ACTION_OPEN_DECK = "com.tabdeck.app.OPEN_DECK"
+        const val EXTRA_DECK_ID = "com.tabdeck.app.extra.DECK_ID"
     }
 }

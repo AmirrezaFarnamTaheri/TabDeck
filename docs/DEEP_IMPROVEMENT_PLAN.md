@@ -111,4 +111,18 @@ The automatic `main` release additionally runs:
 - [x] deterministic release archives, manifest, and checksums
 - [x] CI release-mode APK packaging and signature validation
 
-The project is complete when the final branch head passes CI and is merged. That merge triggers the Release workflow, which creates or verifies `v1.0.0` at the merged commit and publishes the final GitHub release automatically.
+The project is complete when the final branch head passes CI and is merged. That merge triggers the Release workflow, which creates or verifies the release tag declared by `version.properties` at the merged commit and publishes the final GitHub release automatically.
+
+## v1.2 implementation checkpoint — automation and recovery
+
+Implemented after the v1.1 guided-utility baseline:
+
+- unique periodic WorkManager maintenance with battery/storage constraints and bounded retry;
+- persisted local maintenance result and failure state;
+- configurable Trash retention and interactive maintenance controls;
+- Deck Launcher and Transfer Status Glance widgets;
+- deck-specific widget deep linking into the Open workflow;
+- backup-v3 round-trip coverage for the new settings;
+- core/static contracts that prevent worker, widget, and deep-link wiring regressions.
+
+This checkpoint intentionally keeps Room schema v3 and backup format v3 because the new state lives in DataStore and the settings decoder supplies backward-compatible defaults.

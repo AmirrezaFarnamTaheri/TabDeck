@@ -133,6 +133,8 @@ object SnapshotJsonCodec {
         put("hapticFeedback", value.hapticFeedback)
         put("syncMissingPolicy", value.syncMissingPolicy.name)
         put("staleAfterDays", value.staleAfterDays)
+        put("automaticMaintenanceEnabled", value.automaticMaintenanceEnabled)
+        put("trashRetentionDays", value.trashRetentionDays)
         put("showAdvancedControls", value.showAdvancedControls)
     }
 
@@ -155,6 +157,8 @@ object SnapshotJsonCodec {
         hapticFeedback = value.optBoolean("hapticFeedback", true),
         syncMissingPolicy = enumOrDefault(value.optString("syncMissingPolicy"), SyncMissingPolicy.KEEP),
         staleAfterDays = value.optInt("staleAfterDays", 30).coerceAtLeast(1),
+        automaticMaintenanceEnabled = value.optBoolean("automaticMaintenanceEnabled", true),
+        trashRetentionDays = value.optInt("trashRetentionDays", 30).coerceAtLeast(1),
         showAdvancedControls = value.optBoolean("showAdvancedControls", false),
     )
 

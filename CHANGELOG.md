@@ -2,6 +2,21 @@
 
 All notable public changes are recorded here. This repository intentionally begins its public history at v1.0.0.
 
+## [1.2.0] - 2026-08-01
+
+### Added
+
+- Unique periodic WorkManager maintenance with battery/storage safeguards, bounded retry, and manual execution.
+- Persisted maintenance health showing restored snoozed tabs, pruned Trash items, failures, and the last run time.
+- Configurable Trash retention and an automatic-maintenance control in Settings.
+- Deck Launcher and Transfer Status home-screen widgets.
+- Deck-specific widget deep links that open the selected deck in the browser-target workflow.
+
+### Changed
+
+- All four widgets refresh after relevant repository state changes.
+- Maintenance and widget settings remain compatible with backup format v3 and existing installations.
+
 ## [1.1.0] - 2026-07-31
 
 ### Fixed

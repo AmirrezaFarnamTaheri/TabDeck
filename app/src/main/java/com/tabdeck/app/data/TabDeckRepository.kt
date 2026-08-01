@@ -1,7 +1,6 @@
 package com.tabdeck.app.data
 
 import android.content.Context
-import androidx.glance.appwidget.updateAll
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -13,6 +12,7 @@ import com.tabdeck.app.data.local.TabQueryBuilder
 import com.tabdeck.app.data.local.toEntity
 import com.tabdeck.app.data.local.toModel
 import com.tabdeck.app.engine.DedupeEngine
+import com.tabdeck.app.engine.MaintenancePolicy
 import com.tabdeck.app.engine.RegexCategorizer
 import com.tabdeck.app.engine.UrlNormalizer
 import com.tabdeck.app.model.AppSettings
@@ -30,6 +30,7 @@ import com.tabdeck.app.model.GroupDefinition
 import com.tabdeck.app.model.ImportSession
 import com.tabdeck.app.model.KeepPolicy
 import com.tabdeck.app.model.LibraryQuery
+import com.tabdeck.app.model.MaintenanceStatus
 import com.tabdeck.app.model.RegexRule
 import com.tabdeck.app.model.SmartView
 import com.tabdeck.app.model.SyncMissingPolicy
@@ -37,7 +38,7 @@ import com.tabdeck.app.model.TagEditMode
 import com.tabdeck.app.model.TabItem
 import com.tabdeck.app.model.TabStatus
 import com.tabdeck.app.model.TransferEvent
-import com.tabdeck.app.widget.TabDeckWidget
+import com.tabdeck.app.widget.updateAllTabDeckWidgets
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -59,6 +60,7 @@ class TabDeckRepository(context: Context) {
     private val decks = database.deckDao()
     private val settingsStore = SettingsStore(context)
     private val initializationMutex = Mutex()
+    private val maintenanceMutex = Mutex()
     @Volatile private var initialized = false
 
     val initialState: ControlState = ControlState()
@@ -89,6 +91,11 @@ class TabDeckRepository(context: Context) {
     private data class HistoryState(
         val transfers: List<TransferEvent>,
         val imports: List<ImportSession>,
+    )
+
+    private data class OperationalState(
+        val bridgeSession: BridgeSession,
+        val maintenanceStatus: MaintenanceStatus,
     )
 
     private val facetState = combine(
@@ -148,13 +155,20 @@ class TabDeckRepository(context: Context) {
         )
     }
 
+    private val operationalState = combine(
+        settingsStore.bridgeSession,
+        settingsStore.maintenanceStatus,
+    ) { bridgeSession, maintenanceStatus ->
+        OperationalState(bridgeSession, maintenanceStatus)
+    }
+
     val controlState: Flow<ControlState> = combine(
         metricsState,
         organizerState,
         historyState,
         settingsStore.settings,
-        settingsStore.bridgeSession,
-    ) { metrics, organizer, histories, settings, bridge ->
+        operationalState,
+    ) { metrics, organizer, histories, settings, operational ->
         ControlState(
             stats = metrics.stats,
             groupCounts = metrics.groupCounts,
@@ -169,7 +183,8 @@ class TabDeckRepository(context: Context) {
             transferHistory = histories.transfers,
             importHistory = histories.imports,
             settings = settings,
-            bridgeSession = bridge,
+            bridgeSession = operational.bridgeSession,
+            maintenanceStatus = operational.maintenanceStatus,
         )
     }
 
@@ -406,10 +421,43 @@ class TabDeckRepository(context: Context) {
 
     suspend fun pruneTrash(olderThanDays: Int): Int {
         initialize()
-        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(olderThanDays.coerceAtLeast(1).toLong())
+        val cutoff = MaintenancePolicy.pruneBeforeEpochMs(System.currentTimeMillis(), olderThanDays)
         val removed = tabs.pruneTrash(cutoff)
         if (removed > 0) refreshWidgets()
         return removed
+    }
+
+    suspend fun runMaintenance(retentionDays: Int): MaintenanceStatus = maintenanceMutex.withLock {
+        initialize()
+        val completedAt = System.currentTimeMillis()
+        val (awakened, pruned) = database.withTransaction {
+            val awakened = tabs.wakeDueTabs(completedAt)
+            val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
+            awakened to pruned
+        }
+        val status = MaintenanceStatus(
+            lastRunAtEpochMs = completedAt,
+            awakened = awakened,
+            pruned = pruned,
+            message = when {
+                awakened == 0 && pruned == 0 -> "No maintenance changes were needed"
+                else -> "Restored $awakened snoozed tabs and pruned $pruned Trash items"
+            },
+        )
+        settingsStore.recordMaintenance(status)
+        refreshWidgets()
+        status
+    }
+
+    suspend fun recordMaintenanceFailure(message: String) {
+        settingsStore.recordMaintenance(
+            MaintenanceStatus(
+                lastRunAtEpochMs = System.currentTimeMillis(),
+                failed = true,
+                message = message.trim().ifBlank { "Maintenance failed" }.take(180),
+            ),
+        )
+        refreshWidgets()
     }
 
     suspend fun deletePermanently(ids: Set<String>) {
@@ -789,7 +837,7 @@ class TabDeckRepository(context: Context) {
     }
 
     private suspend fun refreshWidgets() {
-        runCatching { TabDeckWidget().updateAll(appContext) }
+        updateAllTabDeckWidgets(appContext)
     }
 
     private suspend fun ensureGroup(name: String): String {

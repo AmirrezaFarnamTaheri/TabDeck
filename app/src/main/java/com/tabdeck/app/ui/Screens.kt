@@ -784,6 +784,8 @@ fun TransferScreen(
     installedBrowsers: Map<BrowserId, Boolean>,
     progress: BrowserTransferCoordinator.Progress?,
     viewModel: TabDeckViewModel,
+    requestedDeckId: String? = null,
+    onDeckRequestConsumed: () -> Unit = {},
 ) {
     var target by remember { mutableStateOf<BrowserId?>(null) }
     var scope by remember { mutableStateOf(if (selectedCount > 0) TransferScope.SELECTED else TransferScope.CURRENT_VIEW) }
@@ -793,6 +795,14 @@ fun TransferScreen(
     var groupMenu by remember { mutableStateOf(false) }
     var deckMenu by remember { mutableStateOf(false) }
     var confirmTransfer by remember { mutableStateOf(false) }
+    LaunchedEffect(requestedDeckId, state.decks) {
+        val requested = requestedDeckId?.takeIf { id -> state.decks.any { it.id == id } }
+        if (requested != null) {
+            deckId = requested
+            scope = TransferScope.DECK
+            onDeckRequestConsumed()
+        }
+    }
     val targets = BrowserId.entries.filter { it.isLaunchTarget && (showUnavailable || installedBrowsers[it] == true) }
     val estimatedCount = when (scope) {
         TransferScope.SELECTED -> selectedCount
@@ -1025,6 +1035,7 @@ fun SettingsScreen(
     var confirmPrune by remember { mutableStateOf(false) }
     val settings = state.settings
     var staleDaysText by remember(settings.staleAfterDays) { mutableStateOf(settings.staleAfterDays.toString()) }
+    var retentionDaysText by remember(settings.trashRetentionDays) { mutableStateOf(settings.trashRetentionDays.toString()) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp, 20.dp, 20.dp, 120.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { ScreenHeader("Preferences and local data", "Settings", "Adjust capture behavior, appearance, backups, and maintenance.") }
         item { SectionTitle("Capture behavior", "Defaults applied when new snapshots arrive") }
@@ -1092,12 +1103,41 @@ fun SettingsScreen(
                 OutlinedButton(onClick = onExportBookmarks, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Bookmarks, null); Text("Browser bookmarks HTML", Modifier.padding(start = 7.dp)) }
             }
         }
-        item { SectionTitle("Maintenance", "Destructive actions stay explicit") }
+        item { SectionTitle("Maintenance", "Automatic cleanup is bounded, local, and visible") }
+        item {
+            ControlCard("Automation and retention", "A unique daily WorkManager job restores due snoozed tabs and removes Trash older than your retention policy.", Icons.Outlined.Schedule) {
+                SwitchLine("Automatic daily maintenance", settings.automaticMaintenanceEnabled, viewModel::setAutomaticMaintenance)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = retentionDaysText,
+                        onValueChange = { value -> retentionDaysText = value.filter(Char::isDigit).take(5) },
+                        label = { Text("Trash retention days") },
+                        supportingText = { Text("Minimum 1 day") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(
+                        onClick = { retentionDaysText.toIntOrNull()?.takeIf { it > 0 }?.let(viewModel::setTrashRetentionDays) },
+                        enabled = (retentionDaysText.toIntOrNull() ?: 0) > 0,
+                    ) { Text("Apply") }
+                }
+                val maintenance = state.maintenanceStatus
+                KeyValueRow("Last run", maintenance.lastRunAtEpochMs?.let(::formatTime) ?: "Not yet")
+                KeyValueRow("Last result", if (maintenance.failed) "Failed" else maintenance.message.ifBlank { "No result recorded" })
+                if (maintenance.lastRunAtEpochMs != null && !maintenance.failed) {
+                    KeyValueRow("Restored / pruned", "${maintenance.awakened} / ${maintenance.pruned}")
+                }
+                Button(onClick = viewModel::runMaintenanceNow, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Sync, null)
+                    Text("Run maintenance now", Modifier.padding(start = 7.dp))
+                }
+            }
+        }
         item {
             ControlCard("Local storage", "Trash is reversible until permanently pruned. Reset removes all local TabDeck data.", Icons.Outlined.Storage) {
                 KeyValueRow("Total records", state.stats.total.toString())
                 KeyValueRow("Trash", state.stats.trashed.toString())
-                OutlinedButton(onClick = { confirmPrune = true }, modifier = Modifier.fillMaxWidth(), enabled = state.stats.trashed > 0) { Icon(Icons.Outlined.DeleteForever, null); Text("Prune Trash older than 30 days", Modifier.padding(start = 7.dp)) }
+                OutlinedButton(onClick = { confirmPrune = true }, modifier = Modifier.fillMaxWidth(), enabled = state.stats.trashed > 0) { Icon(Icons.Outlined.DeleteForever, null); Text("Prune Trash older than ${settings.trashRetentionDays} days", Modifier.padding(start = 7.dp)) }
                 OutlinedButton(onClick = { confirmReset = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.WarningAmber, null); Text("Reset TabDeck", Modifier.padding(start = 7.dp)) }
             }
         }
@@ -1108,10 +1148,11 @@ fun SettingsScreen(
                 KeyValueRow("Duplicate copies", state.stats.duplicateCopies.toString())
                 KeyValueRow("Bridge scope", settings.bridgeScope.name)
                 KeyValueRow("Storage", "Room database")
+                KeyValueRow("Maintenance", if (state.maintenanceStatus.failed) "Attention required" else state.maintenanceStatus.message.ifBlank { "Waiting for first run" })
             }
         }
     }
-    if (confirmPrune) ConfirmDialog("Prune old Trash?", "Trashed records older than 30 days will be permanently removed.", "Prune", true, { confirmPrune = false }) { viewModel.pruneTrash(30) }
+    if (confirmPrune) ConfirmDialog("Prune old Trash?", "Trashed records older than ${settings.trashRetentionDays} days will be permanently removed.", "Prune", true, { confirmPrune = false }) { viewModel.pruneTrash(settings.trashRetentionDays) }
     if (confirmReset) ConfirmDialog("Reset all TabDeck data?", "Tabs, rules, groups, views, decks, history, and preferences will be deleted locally. This cannot be undone without a backup.", "Reset everything", true, { confirmReset = false }, viewModel::resetAll)
 }
 

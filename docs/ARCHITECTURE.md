@@ -160,3 +160,7 @@ Official Chrome reference: <https://developer.chrome.com/devtools/docs/remote-de
 - **Netscape bookmarks HTML**: TabDeck groups become browser-importable folders; markup and attributes are escaped.
 
 Readable exports exclude Trash. Future backup versions and unrelated JSON are rejected instead of silently becoming empty data.
+
+## Local maintenance orchestration
+
+`MaintenanceWorker` is the single periodic maintenance entry point. It is scheduled with WorkManager under a unique name, uses battery-not-low and storage-not-low constraints, and applies bounded exponential retry. The worker reads the current DataStore policy at execution time, calls the repository’s idempotent maintenance transaction boundary, persists a compact `MaintenanceStatus`, and refreshes every Glance widget. Manual maintenance uses the same repository behavior, so scheduled and interactive paths cannot drift.

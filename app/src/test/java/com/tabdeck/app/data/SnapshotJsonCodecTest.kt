@@ -1,5 +1,8 @@
 package com.tabdeck.app.data
 
+import com.tabdeck.app.model.AppSettings
+import com.tabdeck.app.model.AppSnapshot
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,5 +42,20 @@ class SnapshotJsonCodecTest {
             SnapshotJsonCodec.decodeClassified("https://example.com") is
                 SnapshotJsonCodec.DecodeResult.NotBackup,
         )
+    }
+
+    @Test
+    fun maintenancePreferencesRoundTrip() {
+        val encoded = SnapshotJsonCodec.encode(
+            AppSnapshot(
+                settings = AppSettings(
+                    automaticMaintenanceEnabled = false,
+                    trashRetentionDays = 75,
+                ),
+            ),
+        )
+        val decoded = SnapshotJsonCodec.decode(encoded) ?: error("backup did not decode")
+        assertEquals(false, decoded.settings.automaticMaintenanceEnabled)
+        assertEquals(75, decoded.settings.trashRetentionDays)
     }
 }

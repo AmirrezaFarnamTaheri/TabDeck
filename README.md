@@ -4,7 +4,7 @@
 
 TabDeck is a local-first Android utility for capturing browser links, finding and organizing them later, and opening a chosen set in an installed browser. It treats tabs as durable data instead of pretending Android grants one app access to every other browser's private session.
 
-The public release history starts at **v1.0.0**. Product versions are independent from compatibility formats such as the Room schema, backup format, saved-query codec, and bridge API.
+The public release history starts at **v1.0.0**; the current product release is **v1.2.0**. Product versions are independent from compatibility formats such as the Room schema, backup format, saved-query codec, and bridge API.
 
 ## The guided workflow
 

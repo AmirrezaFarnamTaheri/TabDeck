@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 from versioning import load_version
 
 ROOT = Path(__file__).resolve().parents[1]
+ANDROID_ATTR = "{http://schemas.android.com/apk/res/android}"
 ERRORS: list[str] = []
 WARNINGS: list[str] = []
 CHECKS: list[str] = []
@@ -356,6 +357,28 @@ def validate_compose_icon_imports() -> None:
     ok(f"Validated Compose icon imports in {checked} Kotlin files")
 
 
+def widget_provider_registered(
+    manifest_root: ET.Element,
+    receiver_name: str,
+    provider_name: str,
+) -> bool:
+    """Verify one Glance receiver and its provider metadata structurally."""
+    application = manifest_root.find("application")
+    if application is None:
+        return False
+    receiver = next((item for item in application.findall("receiver") if item.get(f"{ANDROID_ATTR}name") == receiver_name), None)
+    if receiver is None or receiver.get(f"{ANDROID_ATTR}permission") != "android.permission.BIND_APPWIDGET":
+        return False
+    metadata = next((item for item in receiver.findall("meta-data") if item.get(f"{ANDROID_ATTR}name") == "android.appwidget.provider"), None)
+    if metadata is None or metadata.get(f"{ANDROID_ATTR}resource") != f"@xml/{provider_name}":
+        return False
+    provider_path = ROOT / "app/src/main/res/xml" / f"{provider_name}.xml"
+    if not provider_path.is_file():
+        return False
+    provider_root = ET.parse(provider_path).getroot()
+    return provider_root.tag == "appwidget-provider" and bool(provider_root.get(f"{ANDROID_ATTR}initialLayout")) and provider_root.get(f"{ANDROID_ATTR}updatePeriodMillis") == "0"
+
+
 def validate_release_contracts() -> None:
     """Validate cross-component runtime and release invariants."""
     bridge = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/LocalBridgeService.kt").read_text(encoding="utf-8")
@@ -369,6 +392,15 @@ def validate_release_contracts() -> None:
     export_codec = (ROOT / "app/src/main/java/com/tabdeck/app/data/TabExportCodec.kt").read_text(encoding="utf-8")
     bridge_network = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgeNetwork.kt").read_text(encoding="utf-8")
     bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+    application_source = (ROOT / "app/src/main/java/com/tabdeck/app/TabDeckApplication.kt").read_text(encoding="utf-8")
+    maintenance_worker = (ROOT / "app/src/main/java/com/tabdeck/app/MaintenanceWorker.kt").read_text(encoding="utf-8")
+    widget_source = (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8")
+    manifest_root = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
+    core_harness = run(["bash", "tools/run_core_checks.sh"])
+    core_harness_passed = core_harness.returncode == 0 and "TabDeck core checks passed" in core_harness.stdout
+    if not core_harness_passed:
+        detail = (core_harness.stderr or core_harness.stdout).strip().splitlines()[-5:]
+        fail("Executable core harness failed during release-contract validation: " + " | ".join(detail))
     endpoint_match = re.search(r'const val LOOPBACK_ENDPOINT\s*=\s*"([^"]+)"', bridge_network)
     endpoint_host = urlsplit(endpoint_match.group(1)).hostname if endpoint_match else None
     checks = {
@@ -381,6 +413,27 @@ def validate_release_contracts() -> None:
         "query-wide bulk controls": "selectAllMatching" in screens and "editTagsOnSelected" in screens,
         "chunked tag editing": "suspend fun editTags" in repository and "chunked(SQLITE_IN_CHUNK)" in repository,
         "quick control widget": "QuickCaptureWidgetReceiver" in manifest and "quick_capture_widget_info" in manifest,
+        "automation and recovery widgets": all((
+            widget_provider_registered(manifest_root, ".widget.TransferStatusWidgetReceiver", "transfer_status_widget_info"),
+            widget_provider_registered(manifest_root, ".widget.DeckLauncherWidgetReceiver", "deck_launcher_widget_info"),
+            "class TransferStatusWidgetReceiver" in widget_source,
+            "class DeckLauncherWidgetReceiver" in widget_source,
+        )),
+        "automatic maintenance scheduling path": all((
+            "MaintenanceWorker.reconcileSchedule(" in application_source,
+            "MaintenanceWorker.reconcileSchedule(" in view_model,
+            "enqueueUniquePeriodicWork(" in maintenance_worker,
+            "ExistingPeriodicWorkPolicy.UPDATE" in maintenance_worker,
+            "setRequiresBatteryNotLow(true)" in maintenance_worker,
+            "setRequiresStorageNotLow(true)" in maintenance_worker,
+        )),
+        "unused manual maintenance worker API removed": "enqueueNow(" not in maintenance_worker and "UNIQUE_MANUAL_WORK" not in maintenance_worker,
+        "executable core harness": core_harness_passed,
+        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
+        "maintenance transaction and status refresh": "database.withTransaction" in repository and "settingsStore.recordMaintenance(status)\n        refreshWidgets()" in repository,
+        "failure-isolated widget refresh": "catch (_: Exception)" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),
+        "widget timestamp date conversion": "format(Date(epochMs))" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),
+        "deck widget deep link": "ACTION_OPEN_DECK" in view_model and "EXTRA_DECK_ID" in view_model,
         "core harness Compose stub": "ComposeRuntimeStubs.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
         "human-readable exports": all(token in export_codec for token in ("MARKDOWN", "CSV", "NETSCAPE_BOOKMARKS", "csvCell")),
         "spreadsheet export hardening": "trimStart().firstOrNull() in setOf" in export_codec,

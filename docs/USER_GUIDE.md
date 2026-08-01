@@ -54,3 +54,18 @@ Backups preserve the complete supported collection and exclude the active bridge
 Settings contains capture defaults, appearance, exports, maintenance, and diagnostics. Capture contains the temporary local bridge. Session duration and stale thresholds accept any positive integer rather than a fixed preset ceiling.
 
 The bridge remains loopback-only, authenticated, temporary, request-size bounded, and rate-limited. Desktop Link splits large selections into multiple requests so these security boundaries do not become collection-count ceilings.
+
+## Automatic maintenance
+
+Settings → Maintenance controls a unique daily local job. When enabled, TabDeck restores snoozed tabs whose wake time has arrived and permanently removes Trash older than the configured retention period. The job does not use network access, is deferred when battery or storage is low, and records its last result for troubleshooting. Use **Run maintenance now** for an immediate, visible run.
+
+## Home-screen widgets
+
+TabDeck provides four Glance widgets:
+
+- **Collection health** for active, duplicate, and Inbox counts.
+- **Quick capture** for import, capture, and open shortcuts.
+- **Deck launcher** for entering the Open workflow with a saved deck preselected.
+- **Transfer status** for recent request-dispatch and maintenance outcomes.
+
+Deck Launcher uses the first ordered deck. Reorder decks in Organize to choose which deck appears on the widget.

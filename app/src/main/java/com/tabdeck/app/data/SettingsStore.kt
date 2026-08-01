@@ -16,6 +16,7 @@ import com.tabdeck.app.model.BridgeSession
 import com.tabdeck.app.model.DedupeMode
 import com.tabdeck.app.model.KeepPolicy
 import com.tabdeck.app.model.LibraryLayout
+import com.tabdeck.app.model.MaintenanceStatus
 import com.tabdeck.app.model.SyncMissingPolicy
 import com.tabdeck.app.model.ThemeMode
 import com.tabdeck.app.model.TransferPacing
@@ -49,7 +50,14 @@ class SettingsStore(private val context: Context) {
         val hapticFeedback = booleanPreferencesKey("haptic_feedback")
         val syncMissingPolicy = stringPreferencesKey("sync_missing_policy")
         val staleAfterDays = intPreferencesKey("stale_after_days")
+        val automaticMaintenance = booleanPreferencesKey("automatic_maintenance")
+        val trashRetentionDays = intPreferencesKey("trash_retention_days")
         val showAdvancedControls = booleanPreferencesKey("show_advanced_controls")
+        val maintenanceLastRunAt = longPreferencesKey("maintenance_last_run_at")
+        val maintenanceAwakened = intPreferencesKey("maintenance_awakened")
+        val maintenancePruned = intPreferencesKey("maintenance_pruned")
+        val maintenanceFailed = booleanPreferencesKey("maintenance_failed")
+        val maintenanceMessage = stringPreferencesKey("maintenance_message")
         val bridgeEnabled = booleanPreferencesKey("bridge_enabled")
         val bridgeStartedAt = longPreferencesKey("bridge_started_at")
         val bridgeExpiresAt = longPreferencesKey("bridge_expires_at")
@@ -59,8 +67,10 @@ class SettingsStore(private val context: Context) {
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map(::toSettings)
     val bridgeSession: Flow<BridgeSession> = context.settingsDataStore.data.map(::toBridgeSession)
+    val maintenanceStatus: Flow<MaintenanceStatus> = context.settingsDataStore.data.map(::toMaintenanceStatus)
 
     suspend fun currentSettings(): AppSettings = settings.first()
+    suspend fun currentMaintenanceStatus(): MaintenanceStatus = maintenanceStatus.first()
 
     /** Persist generated defaults exactly once so secrets never change between collectors. */
     suspend fun ensureDefaults() {
@@ -90,6 +100,16 @@ class SettingsStore(private val context: Context) {
         context.settingsDataStore.edit { prefs ->
             val key = if (accepted) Keys.bridgeAccepted else Keys.bridgeRejected
             prefs[key] = (prefs[key] ?: 0) + 1
+        }
+    }
+
+    suspend fun recordMaintenance(status: MaintenanceStatus) {
+        context.settingsDataStore.edit { prefs ->
+            status.lastRunAtEpochMs?.let { prefs[Keys.maintenanceLastRunAt] = it } ?: prefs.remove(Keys.maintenanceLastRunAt)
+            prefs[Keys.maintenanceAwakened] = status.awakened.coerceAtLeast(0)
+            prefs[Keys.maintenancePruned] = status.pruned.coerceAtLeast(0)
+            prefs[Keys.maintenanceFailed] = status.failed
+            prefs[Keys.maintenanceMessage] = status.message.take(180)
         }
     }
 
@@ -135,7 +155,17 @@ class SettingsStore(private val context: Context) {
         hapticFeedback = prefs[Keys.hapticFeedback] ?: true,
         syncMissingPolicy = enumOrDefault(prefs[Keys.syncMissingPolicy], SyncMissingPolicy.KEEP),
         staleAfterDays = (prefs[Keys.staleAfterDays] ?: 30).coerceAtLeast(1),
+        automaticMaintenanceEnabled = prefs[Keys.automaticMaintenance] ?: true,
+        trashRetentionDays = (prefs[Keys.trashRetentionDays] ?: 30).coerceAtLeast(1),
         showAdvancedControls = prefs[Keys.showAdvancedControls] ?: false,
+    )
+
+    private fun toMaintenanceStatus(prefs: Preferences): MaintenanceStatus = MaintenanceStatus(
+        lastRunAtEpochMs = prefs[Keys.maintenanceLastRunAt],
+        awakened = (prefs[Keys.maintenanceAwakened] ?: 0).coerceAtLeast(0),
+        pruned = (prefs[Keys.maintenancePruned] ?: 0).coerceAtLeast(0),
+        failed = prefs[Keys.maintenanceFailed] ?: false,
+        message = prefs[Keys.maintenanceMessage].orEmpty(),
     )
 
     private fun toBridgeSession(prefs: Preferences): BridgeSession {
@@ -168,6 +198,8 @@ class SettingsStore(private val context: Context) {
         prefs[Keys.hapticFeedback] = value.hapticFeedback
         prefs[Keys.syncMissingPolicy] = value.syncMissingPolicy.name
         prefs[Keys.staleAfterDays] = value.staleAfterDays.coerceAtLeast(1)
+        prefs[Keys.automaticMaintenance] = value.automaticMaintenanceEnabled
+        prefs[Keys.trashRetentionDays] = value.trashRetentionDays.coerceAtLeast(1)
         prefs[Keys.showAdvancedControls] = value.showAdvancedControls
     }
 
