@@ -1,18 +1,12 @@
-name: Harden v1.2 review findings
+name: Finalize v1.2 review findings
 
 on:
   push:
-    branches:
-      - codex/automation-recovery-v1.2
-    paths:
-      - .github/workflows/harden-v1.2-review.yml
+    branches: [codex/automation-recovery-v1.2]
+    paths: [.github/workflows/harden-v1.2-review.yml]
 
 permissions:
   contents: write
-
-concurrency:
-  group: harden-v1.2-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   JAVA_VERSION: "17"
@@ -25,167 +19,156 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Check out branch without persisted credentials
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: false
-
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          SDKMANAGER="${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          if [[ -z "${SDK_ROOT}" || ! -x "${SDKMANAGER}" ]]; then
-            SDKMANAGER="$(command -v sdkmanager || true)"
-          fi
-          test -n "${SDKMANAGER}" && test -x "${SDKMANAGER}"
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "${SDKMANAGER}" || SDKMANAGER="$(command -v sdkmanager)"
           yes | "${SDKMANAGER}" --licenses >/dev/null || true
-          "${SDKMANAGER}" \
-            "platform-tools" \
-            "platforms;android-${ANDROID_API}" \
-            "build-tools;${ANDROID_BUILD_TOOLS}"
-
-      - name: Apply review hardening fixes
+          "${SDKMANAGER}" "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;${ANDROID_BUILD_TOOLS}"
+      - name: Apply remaining review fixes
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one match, found {count}')
-              return text.replace(old, new, 1)
+          worker = Path('app/src/main/java/com/tabdeck/app/MaintenanceWorker.kt')
+          text = worker.read_text(encoding='utf-8')
+          for line in (
+              'import androidx.work.ExistingWorkPolicy\n',
+              'import androidx.work.OneTimeWorkRequestBuilder\n',
+              'import androidx.work.workDataOf\n',
+          ):
+              text = text.replace(line, '')
+          old = '''        val forced = inputData.getBoolean(KEY_FORCE, false)
+                  return try {
+                      val settings = repository.currentState().settings
+                      if (!forced && !settings.automaticMaintenanceEnabled) return Result.success()
+          '''
+          new = '''        return try {
+                      val settings = repository.currentState().settings
+                      if (!settings.automaticMaintenanceEnabled) return Result.success()
+          '''
+          if text.count(old) != 1:
+              raise SystemExit('maintenance forced-work block mismatch')
+          text = text.replace(old, new, 1)
+          text = text.replace('        const val UNIQUE_MANUAL_WORK = "tabdeck-manual-maintenance"\n        private const val KEY_FORCE = "force"\n', '')
+          start = text.find('\n        fun enqueueNow(context: Context) {\n')
+          if start < 0:
+              raise SystemExit('enqueueNow block missing')
+          end = text.find('\n        }\n', start)
+          if end < 0:
+              raise SystemExit('enqueueNow block end missing')
+          text = text[:start] + text[end + len('\n        }\n'):]
+          worker.write_text(text, encoding='utf-8')
 
-          widget = Path('app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt')
-          text = widget.read_text(encoding='utf-8')
-          if 'import kotlinx.coroutines.CancellationException\n' not in text:
-              text = replace_once(
-                  text,
-                  'import kotlinx.coroutines.Dispatchers\n',
-                  'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.Dispatchers\n',
-                  'coroutine import',
-              )
-          if 'import java.util.Date\n' not in text:
-              text = replace_once(
-                  text,
-                  'import java.text.DateFormat\n',
-                  'import java.text.DateFormat\nimport java.util.Date\n',
-                  'date import',
-              )
-          old_widget_updates = (
-              'suspend fun updateAllTabDeckWidgets(context: Context) {\n'
-              '    TabDeckWidget().updateAll(context)\n'
-              '    QuickCaptureWidget().updateAll(context)\n'
-              '    TransferStatusWidget().updateAll(context)\n'
-              '    DeckLauncherWidget().updateAll(context)\n'
-              '}\n'
-          )
-          new_widget_updates = (
-              'suspend fun updateAllTabDeckWidgets(context: Context) {\n'
-              '    listOf(\n'
-              '        TabDeckWidget(),\n'
-              '        QuickCaptureWidget(),\n'
-              '        TransferStatusWidget(),\n'
-              '        DeckLauncherWidget(),\n'
-              '    ).forEach { widget ->\n'
-              '        try {\n'
-              '            widget.updateAll(context)\n'
-              '        } catch (cancelled: CancellationException) {\n'
-              '            throw cancelled\n'
-              '        } catch (_: Exception) {\n'
-              '            // Widgets are derived UI. A launcher/rendering failure must not fail a completed data mutation.\n'
-              '        }\n'
-              '    }\n'
-              '}\n'
-          )
-          text = replace_once(text, old_widget_updates, new_widget_updates, 'widget update block')
-          text = replace_once(
-              text,
-              'private fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(epochMs)',
-              'internal fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMs))',
-              'widget time formatter',
-          )
-          widget.write_text(text, encoding='utf-8')
-
-          repository = Path('app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt')
-          text = repository.read_text(encoding='utf-8')
-          old_mutation = (
-              '        val awakened = tabs.wakeDueTabs(completedAt)\n'
-              '        val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))\n'
-          )
-          new_mutation = (
-              '        val (awakened, pruned) = database.withTransaction {\n'
-              '            val awakened = tabs.wakeDueTabs(completedAt)\n'
-              '            val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))\n'
-              '            awakened to pruned\n'
-              '        }\n'
-          )
-          text = replace_once(text, old_mutation, new_mutation, 'maintenance mutation block')
-          text = replace_once(
-              text,
-              '        if (awakened > 0 || pruned > 0) refreshWidgets()\n',
-              '        refreshWidgets()\n',
-              'maintenance refresh block',
-          )
-          repository.write_text(text, encoding='utf-8')
-
-          test = Path('app/src/test/java/com/tabdeck/app/widget/TabDeckWidgetFormattingTest.kt')
-          test.parent.mkdir(parents=True, exist_ok=True)
-          test.write_text(
-              'package com.tabdeck.app.widget\n\n'
-              'import org.junit.Assert.assertTrue\n'
-              'import org.junit.Test\n\n'
-              'class TabDeckWidgetFormattingTest {\n'
-              '    @Test\n'
-              '    fun epochTimestampFormatsAsDate() {\n'
-              '        assertTrue(formatWidgetTime(0L).isNotBlank())\n'
-              '    }\n'
-              '}\n',
-              encoding='utf-8',
-          )
+          plan = Path('docs/DEEP_IMPROVEMENT_PLAN.md')
+          text = plan.read_text(encoding='utf-8')
+          old = 'which creates or verifies `v1.0.0` at the merged commit'
+          new = 'which creates or verifies the release tag declared by `version.properties` at the merged commit'
+          if text.count(old) != 1:
+              raise SystemExit('release target wording mismatch')
+          plan.write_text(text.replace(old, new, 1), encoding='utf-8')
 
           validator = Path('tools/validate_project.py')
           text = validator.read_text(encoding='utf-8')
-          needle = '        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),\n'
-          addition = (
-              needle
-              + '        "maintenance transaction and status refresh": "database.withTransaction" in repository and "settingsStore.recordMaintenance(status)\\n        refreshWidgets()" in repository,\n'
-              + '        "failure-isolated widget refresh": "catch (_: Exception)" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),\n'
-              + '        "widget timestamp date conversion": "format(Date(epochMs))" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),\n'
-          )
-          text = replace_once(text, needle, addition, 'validator anchor')
-          validator.write_text(text, encoding='utf-8')
+          root_anchor = 'ROOT = Path(__file__).resolve().parents[1]\n'
+          if 'ANDROID_ATTR = ' not in text:
+              text = text.replace(root_anchor, root_anchor + 'ANDROID_ATTR = "{http://schemas.android.com/apk/res/android}"\n', 1)
+          function_anchor = 'def validate_release_contracts() -> None:\n    """Validate cross-component runtime and release invariants."""\n'
+          helper = '''def widget_provider_registered(
+              manifest_root: ET.Element,
+              receiver_name: str,
+              provider_name: str,
+          ) -> bool:
+              """Verify one Glance receiver and its provider metadata structurally."""
+              application = manifest_root.find("application")
+              if application is None:
+                  return False
+              receiver = next((item for item in application.findall("receiver") if item.get(f"{ANDROID_ATTR}name") == receiver_name), None)
+              if receiver is None or receiver.get(f"{ANDROID_ATTR}permission") != "android.permission.BIND_APPWIDGET":
+                  return False
+              metadata = next((item for item in receiver.findall("meta-data") if item.get(f"{ANDROID_ATTR}name") == "android.appwidget.provider"), None)
+              if metadata is None or metadata.get(f"{ANDROID_ATTR}resource") != f"@xml/{provider_name}":
+                  return False
+              provider_path = ROOT / "app/src/main/res/xml" / f"{provider_name}.xml"
+              if not provider_path.is_file():
+                  return False
+              provider_root = ET.parse(provider_path).getroot()
+              return provider_root.tag == "appwidget-provider" and bool(provider_root.get(f"{ANDROID_ATTR}initialLayout")) and provider_root.get(f"{ANDROID_ATTR}updatePeriodMillis") == "0"
+
+
+          def validate_release_contracts() -> None:
+              """Validate cross-component runtime and release invariants."""
+          '''
+          if text.count(function_anchor) != 1:
+              raise SystemExit('release contract function anchor mismatch')
+          text = text.replace(function_anchor, helper, 1)
+          source_anchor = '''    bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+              endpoint_match = re.search(r'const val LOOPBACK_ENDPOINT\\s*=\\s*"([^"]+)"', bridge_network)
+          '''
+          source_insert = '''    bridge_parser = (ROOT / "app/src/main/java/com/tabdeck/app/bridge/BridgePayloadParser.kt").read_text(encoding="utf-8")
+              application_source = (ROOT / "app/src/main/java/com/tabdeck/app/TabDeckApplication.kt").read_text(encoding="utf-8")
+              maintenance_worker = (ROOT / "app/src/main/java/com/tabdeck/app/MaintenanceWorker.kt").read_text(encoding="utf-8")
+              widget_source = (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8")
+              manifest_root = ET.parse(ROOT / "app/src/main/AndroidManifest.xml").getroot()
+              core_harness = run(["bash", "tools/run_core_checks.sh"])
+              core_harness_passed = core_harness.returncode == 0 and "TabDeck core checks passed" in core_harness.stdout
+              if not core_harness_passed:
+                  detail = (core_harness.stderr or core_harness.stdout).strip().splitlines()[-5:]
+                  fail("Executable core harness failed during release-contract validation: " + " | ".join(detail))
+              endpoint_match = re.search(r'const val LOOPBACK_ENDPOINT\\s*=\\s*"([^"]+)"', bridge_network)
+          '''
+          if text.count(source_anchor) != 1:
+              raise SystemExit('validator source anchor mismatch')
+          text = text.replace(source_anchor, source_insert, 1)
+          checks_anchor = '''        "automation and recovery widgets": all(token in manifest for token in (
+                      "TransferStatusWidgetReceiver", "DeckLauncherWidgetReceiver",
+                      "transfer_status_widget_info", "deck_launcher_widget_info",
+                  )),
+                  "automatic maintenance worker": (ROOT / "app/src/main/java/com/tabdeck/app/MaintenanceWorker.kt").is_file(),
+                  "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
+          '''
+          checks_insert = '''        "automation and recovery widgets": all((
+                      widget_provider_registered(manifest_root, ".widget.TransferStatusWidgetReceiver", "transfer_status_widget_info"),
+                      widget_provider_registered(manifest_root, ".widget.DeckLauncherWidgetReceiver", "deck_launcher_widget_info"),
+                      "class TransferStatusWidgetReceiver" in widget_source,
+                      "class DeckLauncherWidgetReceiver" in widget_source,
+                  )),
+                  "automatic maintenance scheduling path": all((
+                      "MaintenanceWorker.reconcileSchedule(" in application_source,
+                      "MaintenanceWorker.reconcileSchedule(" in view_model,
+                      "enqueueUniquePeriodicWork(" in maintenance_worker,
+                      "ExistingPeriodicWorkPolicy.UPDATE" in maintenance_worker,
+                      "setRequiresBatteryNotLow(true)" in maintenance_worker,
+                      "setRequiresStorageNotLow(true)" in maintenance_worker,
+                  )),
+                  "unused manual maintenance worker API removed": "enqueueNow(" not in maintenance_worker and "UNIQUE_MANUAL_WORK" not in maintenance_worker,
+                  "executable core harness": core_harness_passed,
+                  "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
+          '''
+          if text.count(checks_anchor) != 1:
+              raise SystemExit('validator checks anchor mismatch')
+          validator.write_text(text.replace(checks_anchor, checks_insert, 1), encoding='utf-8')
           PY
-
-      - name: Verify committed Gradle wrapper
+      - name: Verify and build
         shell: bash
         run: |
           set -euo pipefail
-          test -s gradle/wrapper/gradle-wrapper.jar
-          test -s gradle/wrapper/gradle-wrapper.properties
-          grep -q '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
-          ./gradlew --version
-
-      - name: Run full verification
-        shell: bash
-        run: |
-          set -euo pipefail
           git diff --check
           python3 tools/check_version.py
           bash tools/run_core_checks.sh
@@ -195,8 +178,7 @@ jobs:
           python3 tools/validate_connector_dom.py
           python3 tools/performance_budget.py --validate-config
           ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
-
-      - name: Commit verified hardening changes
+      - name: Commit verified fixes
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -204,13 +186,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt \
-            app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt \
-            app/src/test/java/com/tabdeck/app/widget/TabDeckWidgetFormattingTest.kt \
-            tools/validate_project.py \
-            build-validation-report.txt
-          test -n "$(git diff --cached --name-only)"
-          git commit -m "Harden maintenance and widget runtime behavior"
+          git add app/src/main/java/com/tabdeck/app/MaintenanceWorker.kt docs/DEEP_IMPROVEMENT_PLAN.md tools/validate_project.py build-validation-report.txt
+          git commit -m "Finalize v1.2 review findings"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:codex/automation-recovery-v1.2
