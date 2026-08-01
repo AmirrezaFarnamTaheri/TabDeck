@@ -68,6 +68,27 @@ jobs:
           echo "c6f16307572e4c7f74f2db4cc21addbd7c9865337162a63e664d4ef27f581260  ${RUNNER_TEMP}/tabdeck-v1.2.patch" | sha256sum -c -
           git apply --check "${RUNNER_TEMP}/tabdeck-v1.2.patch"
           git apply "${RUNNER_TEMP}/tabdeck-v1.2.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          repository = Path('app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt')
+          text = repository.read_text(encoding='utf-8')
+          anchor = 'import java.util.UUID\n'
+          if 'import java.util.concurrent.TimeUnit\n' not in text:
+              if anchor not in text:
+                  raise SystemExit('TabDeckRepository import anchor missing')
+              text = text.replace(anchor, anchor + 'import java.util.concurrent.TimeUnit\n', 1)
+              repository.write_text(text, encoding='utf-8')
+
+          widget = Path('app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt')
+          text = widget.read_text(encoding='utf-8')
+          anchor = 'private fun widgetSurface(): GlanceModifier ='
+          if '@Composable\n' + anchor not in text:
+              if anchor not in text:
+                  raise SystemExit('widgetSurface anchor missing')
+              text = text.replace(anchor, '@Composable\n' + anchor, 1)
+              widget.write_text(text, encoding='utf-8')
+          PY
 
       - name: Run project verification
         shell: bash
