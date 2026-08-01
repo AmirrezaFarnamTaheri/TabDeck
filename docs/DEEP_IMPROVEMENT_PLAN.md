@@ -111,7 +111,7 @@ The automatic `main` release additionally runs:
 - [x] deterministic release archives, manifest, and checksums
 - [x] CI release-mode APK packaging and signature validation
 
-The project is complete when the final branch head passes CI and is merged. That merge triggers the Release workflow, which creates or verifies `v1.0.0` at the merged commit and publishes the final GitHub release automatically.
+The project is complete when the final branch head passes CI and is merged. That merge triggers the Release workflow, which creates or verifies the release tag declared by `version.properties` at the merged commit and publishes the final GitHub release automatically.
 
 ## v1.2 implementation checkpoint — automation and recovery
 
