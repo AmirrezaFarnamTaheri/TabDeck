@@ -31,9 +31,11 @@ import androidx.glance.text.TextStyle
 import com.tabdeck.app.MainActivity
 import com.tabdeck.app.TabDeckViewModel
 import com.tabdeck.app.data.TabDeckRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
+import java.util.Date
 
 class TabDeckWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -152,10 +154,20 @@ class DeckLauncherWidget : GlanceAppWidget() {
 }
 
 suspend fun updateAllTabDeckWidgets(context: Context) {
-    TabDeckWidget().updateAll(context)
-    QuickCaptureWidget().updateAll(context)
-    TransferStatusWidget().updateAll(context)
-    DeckLauncherWidget().updateAll(context)
+    listOf(
+        TabDeckWidget(),
+        QuickCaptureWidget(),
+        TransferStatusWidget(),
+        DeckLauncherWidget(),
+    ).forEach { widget ->
+        try {
+            widget.updateAll(context)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Widgets are derived UI. A launcher/rendering failure must not fail a completed data mutation.
+        }
+    }
 }
 
 private suspend fun loadState(context: Context) = withContext(Dispatchers.IO) {
@@ -213,7 +225,7 @@ private fun collectionHealth(active: Int, duplicates: Int, inbox: Int, stale: In
     return (100 - penalty).coerceIn(0, 100)
 }
 
-private fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(epochMs)
+internal fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMs))
 
 class TabDeckWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget = TabDeckWidget() }
 class QuickCaptureWidgetReceiver : GlanceAppWidgetReceiver() { override val glanceAppWidget: GlanceAppWidget = QuickCaptureWidget() }

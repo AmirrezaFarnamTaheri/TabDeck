@@ -430,8 +430,11 @@ class TabDeckRepository(context: Context) {
     suspend fun runMaintenance(retentionDays: Int): MaintenanceStatus = maintenanceMutex.withLock {
         initialize()
         val completedAt = System.currentTimeMillis()
-        val awakened = tabs.wakeDueTabs(completedAt)
-        val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
+        val (awakened, pruned) = database.withTransaction {
+            val awakened = tabs.wakeDueTabs(completedAt)
+            val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
+            awakened to pruned
+        }
         val status = MaintenanceStatus(
             lastRunAtEpochMs = completedAt,
             awakened = awakened,
@@ -442,7 +445,7 @@ class TabDeckRepository(context: Context) {
             },
         )
         settingsStore.recordMaintenance(status)
-        if (awakened > 0 || pruned > 0) refreshWidgets()
+        refreshWidgets()
         status
     }
 
