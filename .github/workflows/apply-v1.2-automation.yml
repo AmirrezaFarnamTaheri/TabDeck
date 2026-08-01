@@ -1,0 +1,90 @@
+name: Apply v1.2 automation and recovery
+
+on:
+  push:
+    branches:
+      - codex/automation-recovery-v1.2
+    paths:
+      - .tabdeck-v1.2.patch.gz.b64
+      - .github/workflows/apply-v1.2-automation.yml
+
+permissions:
+  contents: write
+
+env:
+  JAVA_VERSION: "17"
+  ANDROID_API: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Verify and apply implementation payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "cf261cd0991e57ea3a133e670ef9691b8f6c1c49e61017d9be7fc205917f467d  .tabdeck-v1.2.patch.gz.b64" | sha256sum -c -
+          base64 --decode .tabdeck-v1.2.patch.gz.b64 | gzip --decompress > "${RUNNER_TEMP}/tabdeck-v1.2.patch"
+          echo "c6f16307572e4c7f74f2db4cc21addbd7c9865337162a63e664d4ef27f581260  ${RUNNER_TEMP}/tabdeck-v1.2.patch" | sha256sum -c -
+          git apply --check "${RUNNER_TEMP}/tabdeck-v1.2.patch"
+          git apply "${RUNNER_TEMP}/tabdeck-v1.2.patch"
+
+      - name: Run project verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          python3 tools/check_version.py
+          bash tools/run_core_checks.sh
+          python3 tools/validate_project.py --report build-validation-report.txt
+          python3 tools/validate_guided_utility.py
+          python3 tools/validate_simple_release.py
+          python3 tools/validate_connector_dom.py
+          python3 tools/performance_budget.py --validate-config
+          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug assembleCommunityRelease
+
+      - name: Commit verified source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git reset -- .tabdeck-v1.2.patch.gz.b64 .github/workflows/apply-v1.2-automation.yml
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "Implement v1.2 automation and recovery"
+          git push origin HEAD:codex/automation-recovery-v1.2
