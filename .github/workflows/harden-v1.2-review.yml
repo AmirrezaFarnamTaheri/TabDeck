@@ -1,0 +1,207 @@
+name: Harden v1.2 review findings
+
+on:
+  push:
+    branches:
+      - codex/automation-recovery-v1.2
+    paths:
+      - .github/workflows/harden-v1.2-review.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: harden-v1.2-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: "17"
+  ANDROID_API: "36"
+  ANDROID_BUILD_TOOLS: "36.0.0"
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+
+jobs:
+  verify-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out branch without persisted credentials
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          SDKMANAGER="${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -z "${SDK_ROOT}" || ! -x "${SDKMANAGER}" ]]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          test -n "${SDKMANAGER}" && test -x "${SDKMANAGER}"
+          yes | "${SDKMANAGER}" --licenses >/dev/null || true
+          "${SDKMANAGER}" \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+
+      - name: Apply review hardening fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          widget = Path('app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt')
+          text = widget.read_text(encoding='utf-8')
+          text = text.replace(
+              'import kotlinx.coroutines.Dispatchers\n',
+              'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.Dispatchers\n',
+          )
+          text = text.replace('import java.text.DateFormat\n', 'import java.text.DateFormat\nimport java.util.Date\n')
+          old = '''suspend fun updateAllTabDeckWidgets(context: Context) {
+              TabDeckWidget().updateAll(context)
+              QuickCaptureWidget().updateAll(context)
+              TransferStatusWidget().updateAll(context)
+              DeckLauncherWidget().updateAll(context)
+          }
+          '''
+          new = '''suspend fun updateAllTabDeckWidgets(context: Context) {
+              listOf(
+                  TabDeckWidget(),
+                  QuickCaptureWidget(),
+                  TransferStatusWidget(),
+                  DeckLauncherWidget(),
+              ).forEach { widget ->
+                  try {
+                      widget.updateAll(context)
+                  } catch (cancelled: CancellationException) {
+                      throw cancelled
+                  } catch (_: Exception) {
+                      // Widgets are derived UI. A launcher/rendering failure must not fail a completed data mutation.
+                  }
+              }
+          }
+          '''
+          if old not in text:
+              raise SystemExit('widget update block not found')
+          text = text.replace(old, new)
+          old = 'private fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(epochMs)'
+          new = 'internal fun formatWidgetTime(epochMs: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMs))'
+          if old not in text:
+              raise SystemExit('widget time formatter not found')
+          widget.write_text(text, encoding='utf-8')
+
+          repository = Path('app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt')
+          text = repository.read_text(encoding='utf-8')
+          old = '''        val completedAt = System.currentTimeMillis()
+              val awakened = tabs.wakeDueTabs(completedAt)
+              val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
+              val status = MaintenanceStatus(
+          '''
+          new = '''        val completedAt = System.currentTimeMillis()
+              val (awakened, pruned) = database.withTransaction {
+                  val awakened = tabs.wakeDueTabs(completedAt)
+                  val pruned = tabs.pruneTrash(MaintenancePolicy.pruneBeforeEpochMs(completedAt, retentionDays))
+                  awakened to pruned
+              }
+              val status = MaintenanceStatus(
+          '''
+          if old not in text:
+              raise SystemExit('maintenance mutation block not found')
+          text = text.replace(old, new)
+          old = '''        settingsStore.recordMaintenance(status)
+              if (awakened > 0 || pruned > 0) refreshWidgets()
+              status
+          '''
+          new = '''        settingsStore.recordMaintenance(status)
+              refreshWidgets()
+              status
+          '''
+          if old not in text:
+              raise SystemExit('maintenance refresh block not found')
+          repository.write_text(text, encoding='utf-8')
+
+          test = Path('app/src/test/java/com/tabdeck/app/widget/TabDeckWidgetFormattingTest.kt')
+          test.parent.mkdir(parents=True, exist_ok=True)
+          test.write_text('''package com.tabdeck.app.widget
+
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class TabDeckWidgetFormattingTest {
+              @Test
+              fun epochTimestampFormatsAsDate() {
+                  assertTrue(formatWidgetTime(0L).isNotBlank())
+              }
+          }
+          ''', encoding='utf-8')
+
+          validator = Path('tools/validate_project.py')
+          text = validator.read_text(encoding='utf-8')
+          needle = '        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),\n'
+          addition = '''        "maintenance policy core coverage": "MaintenancePolicy.kt" in (ROOT / "tools/run_core_checks.sh").read_text(encoding="utf-8"),
+              "maintenance transaction and status refresh": "database.withTransaction" in repository and "settingsStore.recordMaintenance(status)\\n        refreshWidgets()" in repository,
+              "failure-isolated widget refresh": "catch (_: Exception)" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),
+              "widget timestamp date conversion": "format(Date(epochMs))" in (ROOT / "app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt").read_text(encoding="utf-8"),
+          '''
+          if needle not in text:
+              raise SystemExit('validator anchor not found')
+          validator.write_text(text.replace(needle, addition), encoding='utf-8')
+          PY
+
+      - name: Verify committed Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s gradle/wrapper/gradle-wrapper.jar
+          test -s gradle/wrapper/gradle-wrapper.properties
+          grep -q '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Run full verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 tools/check_version.py
+          bash tools/run_core_checks.sh
+          python3 tools/validate_project.py --report build-validation-report.txt
+          python3 tools/validate_guided_utility.py
+          python3 tools/validate_simple_release.py
+          python3 tools/validate_connector_dom.py
+          python3 tools/performance_budget.py --validate-config
+          ./gradlew --no-daemon --stacktrace test lintDebug assembleDebug
+
+      - name: Commit verified hardening changes
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/tabdeck/app/data/TabDeckRepository.kt \
+            app/src/main/java/com/tabdeck/app/widget/TabDeckWidget.kt \
+            app/src/test/java/com/tabdeck/app/widget/TabDeckWidgetFormattingTest.kt \
+            tools/validate_project.py \
+            build-validation-report.txt
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "Harden maintenance and widget runtime behavior"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:codex/automation-recovery-v1.2
